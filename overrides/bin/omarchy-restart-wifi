@@ -1,0 +1,28 @@
+#!/usr/local/bin/bash
+
+# omarchy:summary=Restart Wi-Fi (FreeBSD: wpa_supplicant + netif).
+#
+# FreeBSD reimplementation of the NetworkManager/rfkill upstream. Restarting the
+# wlan interface re-runs wpa_supplicant + DHCP per rc.conf. This runs from the
+# menu inside a floating terminal, so doas can prompt for a password.
+
+set -u
+
+priv() {
+  if [[ $(id -u) -eq 0 ]]; then "$@"
+  elif command -v doas >/dev/null 2>&1; then doas "$@"
+  elif command -v sudo >/dev/null 2>&1; then sudo "$@"
+  else su root -c "$*"; fi
+}
+
+dev=${1:-}
+[[ -z $dev ]] && dev=$(route -n get 1.1.1.1 2>/dev/null | awk '/interface:/{print $2; exit}')
+case "$dev" in wlan*) ;; *) dev=wlan0 ;; esac
+
+echo "Restarting Wi-Fi on $dev..."
+priv service netif restart "$dev"
+priv service routing restart >/dev/null 2>&1 || true
+
+echo
+echo "Wi-Fi status:"
+ifconfig "$dev" 2>/dev/null | grep -E 'ssid|status|inet ' || echo "  (interface $dev not found)"

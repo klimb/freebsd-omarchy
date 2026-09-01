@@ -1,0 +1,153 @@
+#!/usr/local/bin/bash
+#
+# omarchy-doctor-freebsd — audit the installed Omarchy tree for Linux-specific
+# commands that are missing (or shimmed) on FreeBSD, grouped by area.
+#
+# Omarchy is built for Arch/systemd; large parts of its menu call tools that do
+# not exist on FreeBSD. This reports, per area, which external commands each
+# helper depends on, whether FreeBSD has them, and the porting note for each.
+# Use it to see at a glance what works, what is already shimmed, and what still
+# needs a FreeBSD adaptation.
+#
+# Usage:
+#   omarchy-doctor-freebsd [-v] [-b] [area ...]
+#     -v    list every helper that references each command
+#     -b    only show broken rows (command missing and not shimmed/excluded)
+#     area  restrict to one or more areas (e.g. wifi bluetooth screensaver)
+#
+# Environment:
+#   OMARCHY_PATH   Omarchy clone to scan (default: ~/.local/src/omarchy)
+
+set -u
+
+OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/src/omarchy}"
+
+verbose=0
+broken_only=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-v) verbose=1; shift ;;
+		-b) broken_only=1; shift ;;
+		-h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+		--) shift; break ;;
+		-*) echo "unknown option: $1" >&2; exit 2 ;;
+		*) break ;;
+	esac
+done
+WANT_AREAS="$*"
+
+if [ ! -d "$OMARCHY_PATH" ]; then
+	echo "error: Omarchy tree not found at $OMARCHY_PATH (set OMARCHY_PATH)" >&2
+	exit 1
+fi
+
+# Shims that omarchy-setup installs to ~/.local/bin. Commands listed here are
+# considered handled even though FreeBSD has no native binary.
+SHIMMED="uwsm uwsm-app setsid systemd-cat systemd-run systemd-inhibit systemctl \
+ttfx flock base64 stat md5sum nproc"
+
+# Audit table: one row per command as "area|command|status|note".
+#   status: ok       FreeBSD has (or provides) a working equivalent
+#           shim     handled by an omarchy-setup shim
+#           partial  works only with a package / partial support
+#           broken   no FreeBSD equivalent yet — menu item will fail
+#           exclude  intentionally unsupported on FreeBSD (won't fix)
+# Areas group related commands so fixes can be tackled one area at a time.
+AUDIT="
+power|systemctl|broken|no systemd; map suspend->acpiconf -s3, reboot/shutdown->shutdown(8), logout->hyprctl exit
+power|loginctl|broken|no systemd-logind; seatd/consolekit2 instead
+power|systemd-inhibit|broken|no equivalent; idle is handled by hypridle
+power|systemd-run|broken|no systemd; run the command directly
+network|nmcli|broken|NetworkManager absent; use wpa_supplicant + ifconfig/netif or a TUI
+network|NetworkManager|broken|absent on FreeBSD
+wifi|iwctl|broken|iwd absent; wifi via wpa_supplicant/ifconfig wlan0
+wifi|rfkill|broken|no rfkill; use ifconfig up/down
+bluetooth|bluetoothctl|broken|bluez absent; FreeBSD stack is ng_ubt/hccontrol/bthidd
+bluetooth|bluez|broken|not on FreeBSD
+audio|pactl|partial|provided by pipewire-pulse when installed
+audio|wpctl|partial|wireplumber CLI; present when wireplumber installed
+audio|playerctl|partial|MPRIS; needs audio/playerctl package
+display|brightnessctl|broken|use backlight(8) (intel) or acpi_video sysctls
+display|hyprsunset|partial|blue-light filter; present only if packaged
+display|plymouth|exclude|boot splash; no FreeBSD equivalent
+screensaver|ttfx|ok|py-terminaltexteffects (tte); ttfx shim + screensaver.txt marker patch
+screensaver|tte|broken|terminaltexteffects (py-pip); alternative to ttfx
+capture|grim|ok|installed (x11/grim)
+capture|slurp|ok|installed (x11/slurp)
+capture|hyprshot|partial|present only if packaged; grim+slurp cover screenshots
+capture|satty|partial|annotation tool; optional
+package|pacman|exclude|Arch; replaced by omarchy-pkg-*-freebsd (pkg)
+package|yay|exclude|AUR helper; no FreeBSD equivalent
+package|paru|exclude|AUR helper; no FreeBSD equivalent
+package|makepkg|exclude|Arch build tool; use the ports tree instead
+package|flatpak|exclude|not on FreeBSD
+package|mise|partial|runtime version manager; may build from ports/cargo
+security|fprintd|broken|fingerprint; libfprint support is limited on FreeBSD
+security|fwupdmgr|exclude|firmware update daemon; not on FreeBSD
+container|docker|exclude|not supported on FreeBSD (excluded by request)
+misc|gsettings|partial|GNOME settings; needs glib schemas installed
+misc|dconf|partial|GNOME settings backend; optional
+misc|upower|partial|sysutils/upower may be packaged
+misc|acpi|broken|use acpiconf/sysctl for battery/thermal
+"
+
+# Count helper files under $OMARCHY_PATH that reference a command as a word.
+count_uses() {
+	grep -rIlw --exclude-dir=.git -- "$1" "$OMARCHY_PATH" 2>/dev/null | wc -l | tr -d ' '
+}
+list_uses() {
+	grep -rIlw --exclude-dir=.git -- "$1" "$OMARCHY_PATH" 2>/dev/null |
+		sed "s,$OMARCHY_PATH/,  ,"
+}
+
+is_shimmed() { case " $SHIMMED " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
+area_wanted() {
+	[ -z "$WANT_AREAS" ] && return 0
+	for a in $WANT_AREAS; do [ "$a" = "$1" ] && return 0; done
+	return 1
+}
+
+printf 'Scanning %s\n' "$OMARCHY_PATH"
+printf '%-12s %-16s %-8s %-6s %s\n' AREA COMMAND STATUS USED NOTE
+printf -- '---------------------------------------------------------------------------\n'
+
+last_area=""
+broken_cmds=""
+while IFS='|' read -r area cmd status note; do
+	[ -z "$area" ] && continue
+	area_wanted "$area" || continue
+
+	# A present binary or an installed shim upgrades the effective status.
+	eff="$status"
+	if command -v "$cmd" >/dev/null 2>&1; then
+		eff="ok"
+	elif is_shimmed "$cmd"; then
+		eff="shim"
+	fi
+
+	uses="$(count_uses "$cmd")"
+	# Skip commands the tree does not actually use.
+	[ "$uses" = "0" ] && continue
+
+	if [ "$broken_only" -eq 1 ] && [ "$eff" != "broken" ]; then
+		continue
+	fi
+
+	[ "$area" != "$last_area" ] && { printf '\n'; last_area="$area"; }
+	printf '%-12s %-16s %-8s %-6s %s\n' "$area" "$cmd" "$eff" "$uses" "$note"
+	[ "$eff" = "broken" ] && broken_cmds="$broken_cmds $cmd"
+
+	if [ "$verbose" -eq 1 ]; then
+		list_uses "$cmd"
+	fi
+done <<EOF
+$AUDIT
+EOF
+
+printf -- '---------------------------------------------------------------------------\n'
+if [ -n "$broken_cmds" ]; then
+	printf 'BROKEN (need FreeBSD work):%s\n' "$broken_cmds"
+else
+	printf 'No broken commands in the selected areas.\n'
+fi

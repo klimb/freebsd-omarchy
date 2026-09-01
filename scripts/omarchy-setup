@@ -221,6 +221,117 @@ write_shim nproc <<'SHIM'
 exec /sbin/sysctl -n hw.ncpu
 SHIM
 
+# ttfx: Omarchy's screensaver/effects renderer is the Arch `ttfx` package, which
+# is TerminalTextEffects renamed. FreeBSD ships it as py-terminaltexteffects (the
+# `tte` command) with identical flags, so pass straight through. If TTE is
+# missing, stay alive (without exec, so our argv keeps the screensaver.txt marker
+# the patched screensaver uses to find us) instead of erroring and busy-looping.
+write_shim ttfx <<'SHIM'
+#!/bin/sh
+if command -v tte >/dev/null 2>&1; then
+	exec tte "$@"
+fi
+echo "ttfx: TTE engine (py-terminaltexteffects) not installed" >&2
+sleep 86400
+SHIM
+
+# systemd-run: Arch schedules power actions in the user manager (e.g.
+# `systemd-run --user --on-active=2s systemctl reboot`). Strip the options,
+# honor --on-active=<n> as a sleep, and run the wrapped command detached so the
+# caller keeps going (matching the async intent).
+write_shim systemd-run <<'SHIM'
+#!/bin/sh
+delay=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--on-active=*) delay=$(printf '%s' "${1#*=}" | tr -dc '0-9'); shift ;;
+		--on-active|--on-calendar|--unit|--description|--slice|--uid|--gid|\
+		--working-directory|-p|--property|--timer-property|--setenv|-E|-M|--machine)
+			shift 2 ;;
+		--property=*|--timer-property=*|--setenv=*|--unit=*|--description=*|\
+		--slice=*|--working-directory=*) shift ;;
+		--user|--system|--scope|--collect|--quiet|--pipe|--wait|--no-ask-password|\
+		--no-block|--no-wall|-G|-r|--remain-after-exit) shift ;;
+		--) shift; break ;;
+		-*) shift ;;
+		*) break ;;
+	esac
+done
+if [ "${delay:-0}" -gt 0 ] 2>/dev/null; then
+	( sleep "$delay"; exec "$@" ) &
+	exit 0
+fi
+exec "$@"
+SHIM
+
+# systemd-inhibit: no systemd. Drop the inhibition options, run the command.
+write_shim systemd-inhibit <<'SHIM'
+#!/bin/sh
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--what|--who|--why|--mode) shift 2 ;;
+		--what=*|--who=*|--why=*|--mode=*|--list|--no-pager|--no-legend) shift ;;
+		--) shift; break ;;
+		-*) shift ;;
+		*) break ;;
+	esac
+done
+exec "$@"
+SHIM
+
+# systemctl: no systemd on FreeBSD. Map the verbs Omarchy uses:
+#   power     suspend->acpiconf -s3, hibernate->-s4, reboot/poweroff->shutdown(8)
+#   services  enable/disable->sysrc, start/stop/restart->service(8),
+#             is-enabled/is-active->boolean checks
+#   --user    session-manager ops have no equivalent -> succeed as a no-op
+# Root operations escalate via doas (the bootstrap adds nopass rules for the
+# power commands so the GUI power menu works without a terminal prompt).
+write_shim systemctl <<'SHIM'
+#!/bin/sh
+priv() {
+	if [ "$(id -u)" -eq 0 ]; then "$@"
+	elif command -v doas >/dev/null 2>&1; then doas "$@"
+	elif command -v sudo >/dev/null 2>&1; then sudo "$@"
+	else su root -c "$*"; fi
+}
+user=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--user) user=1; shift ;;
+		--system|--now|--no-wall|--no-ask-password|--quiet|-q|--no-block|\
+		--no-pager|--no-legend|--force|-f) shift ;;
+		-*) shift ;;
+		*) break ;;
+	esac
+done
+[ "$user" -eq 1 ] && exit 0
+verb="${1:-}"; [ $# -gt 0 ] && shift
+unit="${1:-}"; unit="${unit%.service}"
+case "$verb" in
+	suspend)        priv acpiconf -s3; exit $? ;;
+	hibernate)      priv acpiconf -s4; exit $? ;;
+	reboot)         priv shutdown -r now; exit $? ;;
+	poweroff|halt)  priv shutdown -p now; exit $? ;;
+	daemon-reload|daemon-reexec|import-environment|set-environment|\
+	unset-environment|preset|preset-all) exit 0 ;;
+	is-enabled)
+		[ -n "$unit" ] || exit 1
+		case "$(sysrc -n "${unit}_enable" 2>/dev/null)" in
+			[Yy][Ee][Ss]|[Oo][Nn]|1|[Tt][Rr][Uu][Ee]) echo enabled; exit 0 ;;
+			*) echo disabled; exit 1 ;;
+		esac ;;
+	is-active)
+		[ -n "$unit" ] || exit 1
+		if service "$unit" status >/dev/null 2>&1; then echo active; exit 0
+		else echo inactive; exit 3; fi ;;
+	enable)  priv sysrc "${unit}_enable=YES" >/dev/null 2>&1; exit $? ;;
+	disable) priv sysrc "${unit}_enable=NO"  >/dev/null 2>&1; exit $? ;;
+	start|stop|restart|reload) priv service "$unit" "$verb"; exit $? ;;
+	status)  [ -n "$unit" ] && { service "$unit" status; exit $?; }; exit 0 ;;
+	*) exit 0 ;;
+esac
+SHIM
+
 # On Arch, systemd user units socket-activate PipeWire and the portals. FreeBSD
 # has none, so start them from Hyprland's autostart. This overwrites the user
 # override file (loaded after Omarchy defaults, where `o` is already defined).
@@ -289,6 +400,64 @@ grep -rIl --exclude-dir=.git '^#!/bin/bash' "$OMARCHY_SRC" 2>/dev/null |
 		rm -f "$tmp"
 	done
 
+# 3c. Screensaver/lock detect the effect process with `pgrep/pkill -x ttfx` and
+# with `pidwait`, none of which fit FreeBSD: our ttfx shim runs TTE's `tte`
+# (process name python, not ttfx), and pidwait is Linux procps. Match the effect
+# by its unique input-file marker (screensaver.txt) instead, and swap pidwait
+# for pkill. Done here, after the git reset above, so it survives updates.
+for f in omarchy-screensaver omarchy-system-lock; do
+	sv="$OMARCHY_SRC/bin/$f"
+	[ -f "$sv" ] || continue
+	sed -i '' -e 's/-x ttfx/-f screensaver.txt/g' -e 's/pidwait /pkill /g' "$sv" 2>/dev/null ||
+		sed -i -e 's/-x ttfx/-f screensaver.txt/g' -e 's/pidwait /pkill /g' "$sv"
+done
+
+# 3d. FreeBSD helper overrides. Some omarchy-* helpers are wholly Linux-specific
+# (NetworkManager, etc.). The clone's bin/ is first on PATH, so a ~/.local/bin
+# shim cannot shadow an omarchy-* name; instead copy our FreeBSD reimplementations
+# over the clone here, after the reset, so they persist across updates. The
+# override tree is found via $OMARCHY_OVERRIDES, the installed share dir, or
+# ../overrides relative to this script when run from the repo checkout.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+for ovr in "${OMARCHY_OVERRIDES:-}" \
+           "/usr/local/share/omarchy-freebsd/overrides" \
+           "$SCRIPT_DIR/../overrides"; do
+	[ -n "$ovr" ] && [ -d "$ovr/bin" ] || continue
+	log "Applying FreeBSD helper overrides from $ovr/bin"
+	for f in "$ovr"/bin/*; do
+		[ -f "$f" ] || continue
+		base="$(basename "$f")"
+		cp "$f" "$OMARCHY_SRC/bin/$base" && chmod +x "$OMARCHY_SRC/bin/$base"
+	done
+	break
+done
+
+# 3e. Network panel connection state. The QuickShell network panel derives its
+# whole "connected" state -- kind, signal strength, the hero label and the bar
+# icon -- from Quickshell.Networking, whose only backend is NetworkManager over
+# D-Bus. FreeBSD has no NetworkManager, so that backend reports no devices and
+# the panel showed "NOT CONNECTED" with a dead icon even while the same panel
+# was displaying a live SSID, IP and real-time throughput/ping fed by
+# omarchy-network-status. Fall back to that status data (root.info, from
+# `omarchy-network-status --verbose`) for the connected kind and signal% when
+# NetworkManager is absent. Done here, after the git reset, so it survives updates.
+NETPANEL="$OMARCHY_SRC/shell/plugins/panels/network/Panel.qml"
+if [ -f "$NETPANEL" ] && ! grep -q 'networkManagerAvailable && info.type' "$NETPANEL"; then
+	log "Patching network panel connection state for FreeBSD (no NetworkManager)"
+	# Prepend an info-derived fallback ahead of kind's "disconnected" default,
+	# and swap signalStrength's -1 fallback for a dBm->percent from info.
+	sed -i '' \
+		-e 's|    return "disconnected"|    if (!networkManagerAvailable \&\& info.type) return info.type\
+    return "disconnected"|' \
+		-e 's|^    : -1$|    : (info.type === "wifi" \&\& info.signal_dbm !== undefined ? Math.max(0, Math.min(100, 2 * (parseInt(info.signal_dbm, 10) + 100))) : -1)|' \
+		"$NETPANEL" 2>/dev/null ||
+		sed -i \
+			-e 's|    return "disconnected"|    if (!networkManagerAvailable \&\& info.type) return info.type\
+    return "disconnected"|' \
+			-e 's|^    : -1$|    : (info.type === "wifi" \&\& info.signal_dbm !== undefined ? Math.max(0, Math.min(100, 2 * (parseInt(info.signal_dbm, 10) + 100))) : -1)|' \
+			"$NETPANEL"
+fi
+
 # Rebrand the presentation banner (omarchy-show-logo cats $OMARCHY_PATH/logo.txt)
 # to "FreeBSD". Omarchy's own FIGlet font is uppercase-only, so use figlet's
 # `big` font to keep the FreeBSD casing. Skip if figlet is unavailable.
@@ -336,6 +505,14 @@ cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
   "install.aur": { "when": "false" },
   "remove.package": {
     "action": "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-remove-freebsd"
+  },
+
+  // The bar's NetworkManager panel does not work on FreeBSD. Provide a working
+  // wpa_supplicant selector (scan/pick/connect via fzf) under Setup > Network.
+  "setup.network.wifi": {
+    "icon": "󰖩",
+    "label": "Wi-Fi",
+    "action": "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-wifi-freebsd"
   }
 }
 JSONC

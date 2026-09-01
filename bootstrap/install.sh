@@ -31,6 +31,17 @@ USER_NAME="$(id -un)"
 
 log() { printf '==> %s\n' "$*"; }
 
+# 0. Switch the FreeBSD package repo from the default "quarterly" branch to
+# "latest". "latest" tracks the ports tree continuously, so it carries far more
+# (and newer) packages than the frozen quarterly snapshot. This also flips the
+# FreeBSD-kmods repo (kmods_quarterly_* -> kmods_latest_*) for newer drm-kmod.
+# Edit the base config in place, then force-refresh the repo catalogue.
+if [ -f /etc/pkg/FreeBSD.conf ] && grep -q 'quarterly' /etc/pkg/FreeBSD.conf; then
+	log "Switching pkg repo from 'quarterly' to 'latest'"
+	$SUDO sed -i '' -e 's|quarterly|latest|g' /etc/pkg/FreeBSD.conf
+	$SUDO pkg update -f
+fi
+
 # 1. System packages. Origins map to the pkg names FreeBSD ships.
 # bash is required (every omarchy-* helper is #!/bin/bash); socat and
 # xdg-terminal-exec back the launch/monitor helpers; vips (vipsthumbnail) backs
@@ -38,7 +49,7 @@ log() { printf '==> %s\n' "$*"; }
 PKGS="hyprland seatd bash foot alacritty pipewire wireplumber wl-clipboard grim slurp \
 hyprpicker xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec socat \
 starship zoxide fzf bat eza fd-find ripgrep jq btop lazygit tmux neovim imv git vips figlet \
-noto-basic nerd-fonts font-awesome dbus"
+noto-basic nerd-fonts font-awesome dbus py312-terminaltexteffects cmatrix"
 
 log "Installing packages"
 $SUDO pkg install -y $PKGS
@@ -96,6 +107,17 @@ if [ "$USER_NAME" != "root" ]; then
 	if ! { [ -f "$DOAS_CONF" ] && grep -qF "$DOAS_RULE" "$DOAS_CONF"; }; then
 		printf '%s\n' "$DOAS_RULE" | $SUDO tee -a "$DOAS_CONF" >/dev/null
 	fi
+	# The GUI power menu (suspend/reboot/shutdown) runs with no controlling
+	# terminal, so a password prompt cannot be answered. Grant passwordless doas
+	# for just those power commands (this mirrors what polkit allows a local
+	# desktop session on Linux). More specific "cmd" rules must come last so
+	# doas's last-match-wins evaluation prefers them over the persist rule above.
+	for pc in "shutdown" "acpiconf"; do
+		NP_RULE="permit nopass $USER_NAME as root cmd $pc"
+		if ! { [ -f "$DOAS_CONF" ] && grep -qF "$NP_RULE" "$DOAS_CONF"; }; then
+			printf '%s\n' "$NP_RULE" | $SUDO tee -a "$DOAS_CONF" >/dev/null
+		fi
+	done
 	$SUDO chown root:wheel "$DOAS_CONF"
 	$SUDO chmod 0644 "$DOAS_CONF"
 	# The security/doas package ships no PAM policy; without it PAM hits the
@@ -123,7 +145,19 @@ if [ "$USER_NAME" != "root" ] && command -v bash >/dev/null 2>&1; then
 	fi
 fi
 
-# 6. Dotfiles: reuse omarchy-setup if the port installed it, else run it inline.
+# 6. FreeBSD helper overrides. Install our reimplementations of wholly
+# Linux-specific omarchy-* helpers (network status, wifi restart, ...) to a
+# share dir; omarchy-setup copies them over the clone after cloning/resetting.
+OVR_SRC="$(dirname "$0")/../overrides"
+OVR_DST=/usr/local/share/omarchy-freebsd/overrides
+if [ -d "$OVR_SRC/bin" ]; then
+	log "Installing FreeBSD helper overrides to $OVR_DST"
+	$SUDO mkdir -p "$OVR_DST/bin"
+	$SUDO cp "$OVR_SRC"/bin/* "$OVR_DST/bin/"
+	$SUDO chmod +x "$OVR_DST"/bin/*
+fi
+
+# 7. Dotfiles: reuse omarchy-setup if the port installed it, else run it inline.
 if command -v omarchy-setup >/dev/null 2>&1; then
 	OMARCHY_BRANCH="$OMARCHY_BRANCH" omarchy-setup
 else
@@ -148,8 +182,9 @@ if [ ! -x /usr/local/bin/omarchy-update-freebsd ]; then
 	log "Installed omarchy-update-freebsd to /usr/local/bin"
 fi
 
-# FreeBSD pkg install/remove helpers backing the menu's Package entries.
-for helper in omarchy-pkg-install-freebsd omarchy-pkg-remove-freebsd; do
+# FreeBSD pkg install/remove helpers backing the menu's Package entries, the
+# wpa_supplicant wifi selector, plus the porting audit tool.
+for helper in omarchy-pkg-install-freebsd omarchy-pkg-remove-freebsd omarchy-wifi-freebsd omarchy-doctor-freebsd; do
 	if [ ! -x "/usr/local/bin/$helper" ]; then
 		$SUDO cp "$(dirname "$0")/../scripts/$helper" "/usr/local/bin/$helper"
 		$SUDO chmod +x "/usr/local/bin/$helper"

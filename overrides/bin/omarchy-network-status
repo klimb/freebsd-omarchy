@@ -1,0 +1,127 @@
+#!/usr/local/bin/bash
+
+# omarchy:summary=Print active network status for the shell (FreeBSD)
+# omarchy:group=network
+# omarchy:args=[--verbose]
+#
+# FreeBSD reimplementation of the NetworkManager-based upstream. The bar runs as
+# an unprivileged user and wpa_cli's control socket is root-only, so status is
+# derived entirely from ifconfig/route/netstat, which any user can read.
+
+set -u
+
+verbose=false
+case "${1:-}" in
+  "") ;;
+  --verbose) verbose=true ;;
+  *) echo "Usage: omarchy-network-status [--verbose]" >&2; exit 2 ;;
+esac
+
+probe=1.1.1.1
+
+active_iface() { route -n get "$probe" 2>/dev/null | awk '/interface:/ {print $2; exit}'; }
+default_gw()   { route -n get "$probe" 2>/dev/null | awk '/gateway:/ {print $2; exit}'; }
+
+# A wireless interface reports an ssid line; wired ones do not.
+is_wifi()         { ifconfig "$1" 2>/dev/null | grep -q '[[:space:]]ssid '; }
+wifi_associated() { ifconfig "$1" 2>/dev/null | grep -q 'status: associated'; }
+
+# ifconfig prints: ssid "Name With Spaces" channel ...  or  ssid Name channel ...
+wifi_ssid() {
+  ifconfig "$1" 2>/dev/null | awk '
+    match($0, /ssid /) {
+      s = substr($0, RSTART + 5)
+      if (substr(s, 1, 1) == "\"") { sub(/^"/, "", s); sub(/".*/, "", s) }
+      else { sub(/ channel .*/, "", s) }
+      print s; exit
+    }'
+}
+
+# Frequency in MHz from the "channel N (F MHz ...)" clause.
+wifi_freq() { ifconfig "$1" 2>/dev/null | sed -n 's/.*(\([0-9][0-9]*\) MHz.*/\1/p' | head -n 1; }
+
+# Signal % from `list sta`: column 5 is RSSI in dB above the noise floor, which
+# the trailing "nf -NN" reports; absolute dBm = nf + rssi, mapped to 0-100.
+wifi_signal_pct() {
+  ifconfig "$1" list sta 2>/dev/null | awk '
+    NR == 1 { next }
+    {
+      rssi = $5; nf = -96
+      if (match($0, /nf -?[0-9]+/)) nf = substr($0, RSTART + 3, RLENGTH - 3) + 0
+      dbm = nf + rssi
+      pct = 2 * (dbm + 100)
+      if (pct < 0) pct = 0; if (pct > 100) pct = 100
+      printf "%d", pct; exit
+    }'
+}
+
+wifi_signal_dbm() {
+  ifconfig "$1" list sta 2>/dev/null | awk '
+    NR == 1 { next }
+    {
+      rssi = $5; nf = -96
+      if (match($0, /nf -?[0-9]+/)) nf = substr($0, RSTART + 3, RLENGTH - 3) + 0
+      printf "%d", nf + rssi; exit
+    }'
+}
+
+wifi_bitrate() { ifconfig "$1" list sta 2>/dev/null | awk 'NR > 1 {print $4; exit}'; }
+
+# Hex netmask (0xffffff00) -> prefix length. bash parses 0x… natively, so count
+# set bits without awk (FreeBSD's base awk has no strtonum).
+mask_to_prefix() {
+  local m=$1 n bits=0
+  [[ $m == 0x* ]] || { echo ""; return; }
+  n=$(( m ))
+  while (( n )); do bits=$(( bits + (n & 1) )); n=$(( n >> 1 )); done
+  echo "$bits"
+}
+
+ping_latency_ms() {
+  LC_ALL=C ping -n -c 1 -t 1 "$1" 2>/dev/null |
+    awk -F'time[=<]' '/time[=<]/ { split($2, p, " "); print p[1]; exit }'
+}
+
+print_status() {
+  local dev; dev=$(active_iface)
+  if [[ -z $dev ]]; then printf 'disconnected\t\t\t\n'; return; fi
+  if is_wifi "$dev"; then
+    if ! wifi_associated "$dev"; then printf 'disconnected\t\t\t\n'; return; fi
+    printf 'wifi\t%s\t%s\t%s\n' "$(wifi_ssid "$dev")" "$(wifi_signal_pct "$dev")" "$(wifi_freq "$dev")"
+  else
+    printf 'ethernet\t%s\t\t\n' "$dev"
+  fi
+}
+
+print_verbose() {
+  local dev gw ip mask; dev=$(active_iface); [[ -z $dev ]] && return
+  gw=$(default_gw)
+  ip=$(ifconfig "$dev" 2>/dev/null | awk '/inet /{print $2; exit}')
+  mask=$(ifconfig "$dev" 2>/dev/null | awk '/inet /{for(i=1;i<=NF;i++) if($i=="netmask"){print $(i+1); exit}}')
+
+  printf 'iface\t%s\n' "$dev"
+  printf 'ip\t%s\n' "$ip"
+  printf 'prefix\t%s\n' "$(mask_to_prefix "$mask")"
+  printf 'gateway\t%s\n' "$gw"
+
+  # rx/tx bytes: netstat -ibnI names the byte columns Ibytes/Obytes in the header.
+  netstat -ibnI "$dev" 2>/dev/null | awk '
+    NR == 1 { for (i = 1; i <= NF; i++) { if ($i == "Ibytes") ri = i; if ($i == "Obytes") ti = i } next }
+    { if (ri) printf "rx_bytes\t%s\n", $ri; if (ti) printf "tx_bytes\t%s\n", $ti; exit }'
+
+  if is_wifi "$dev"; then
+    printf 'type\twifi\n'
+    printf 'ssid\t%s\n' "$(wifi_ssid "$dev")"
+    printf 'signal_dbm\t%s\n' "$(wifi_signal_dbm "$dev")"
+    printf 'freq\t%s\n' "$(wifi_freq "$dev")"
+    printf 'bitrate\t%s\n' "$(wifi_bitrate "$dev")"
+  else
+    printf 'type\tethernet\n'
+  fi
+
+  omarchy-cmd-present ping || return
+  [[ -n $gw ]] && printf 'router_ping_ms\t%s\n' "$(ping_latency_ms "$gw")"
+  printf 'internet_ping_ms\t%s\n' "$(ping_latency_ms "$probe")"
+}
+
+if [[ $verbose == true ]]; then print_verbose; else print_status; fi

@@ -1,0 +1,156 @@
+#!/usr/local/bin/bash
+
+# omarchy:summary=Connect to Wi-Fi on FreeBSD (wpa_supplicant selector)
+# omarchy:group=network
+# omarchy:args=[scan|status]
+#
+# FreeBSD-native replacement for Omarchy's NetworkManager wifi panel. Scans with
+# net80211 (`ifconfig wlanN list scan`, readable by any user), lets you pick an
+# SSID with fzf, and connects through the system wpa_supplicant via wpa_cli.
+# Privileged steps escalate with doas; run from a floating terminal so the
+# password prompt (persist) can be answered.
+#
+# Subcommands:
+#   (none)  interactive: scan -> pick -> connect
+#   scan    print the parsed scan list and exit (no changes; for testing)
+#   status  print the current association and exit
+
+set -u
+
+priv() {
+  if [[ $(id -u) -eq 0 ]]; then "$@"
+  elif command -v doas >/dev/null 2>&1; then doas "$@"
+  elif command -v sudo >/dev/null 2>&1; then sudo "$@"
+  else su root -c "$*"; fi
+}
+
+wlan_iface() {
+  local d
+  d=$(route -n get 1.1.1.1 2>/dev/null | awk '/interface:/{print $2; exit}')
+  case "$d" in wlan*) echo "$d"; return;; esac
+  # Fall back to the first wlan interface.
+  for d in $(ifconfig -l 2>/dev/null); do case "$d" in wlan*) echo "$d"; return;; esac; done
+  echo wlan0
+}
+
+# Parse `ifconfig <if> list scan` into "SSID\tPCT\tSECURED" rows, strongest per
+# SSID, hidden (empty) SSIDs dropped. SSID is the text before the BSSID MAC, so
+# names with spaces survive; security is any RSN/WPA info-element on the line.
+scan_rows() {
+  local iface=$1
+  ifconfig "$iface" list scan 2>/dev/null | awk '
+    NR == 1 { next }
+    {
+      if (!match($0, /[0-9a-fA-F:]{17}/)) next
+      ssid = substr($0, 1, RSTART - 1); sub(/[ \t]+$/, "", ssid)
+      if (ssid == "") next
+      rest = substr($0, RSTART)
+      n = split(rest, f, /[ \t]+/)       # f[1]=bssid f[2]=chan f[3]=rate f[4]=S:N
+      split(f[4], sn, ":"); dbm = sn[1] + 0
+      sec = ($0 ~ /RSN|WPA/) ? 1 : 0
+      if (!(ssid in best) || dbm > best[ssid]) { best[ssid] = dbm; secu[ssid] = sec }
+    }
+    END {
+      for (s in best) {
+        p = 2 * (best[s] + 100); if (p < 0) p = 0; if (p > 100) p = 100
+        printf "%s\t%d\t%d\n", s, p, secu[s]
+      }
+    }
+  '
+}
+
+network_known() { # ssid iface -> prints network id if configured
+  priv wpa_cli -i "$2" list_networks 2>/dev/null |
+    awk -F'\t' -v s="$1" 'NR > 1 && $2 == s { print $1; exit }'
+}
+
+ensure_persist() { # make wpa_supplicant save new networks across reboots
+  grep -q '^update_config=1' /etc/wpa_supplicant.conf 2>/dev/null && return
+  priv sh -c 'printf "update_config=1\n" >> /etc/wpa_supplicant.conf'
+  priv wpa_cli -i "$1" reconfigure >/dev/null 2>&1 || true
+}
+
+do_scan_refresh() { priv ifconfig "$1" scan >/dev/null 2>&1 || true; sleep 2; }
+
+show_status() {
+  local iface=$1
+  echo "Interface: $iface"
+  ifconfig "$iface" 2>/dev/null | grep -E 'ssid|status|inet ' | sed 's/^[[:space:]]*/  /'
+}
+
+connect() {
+  local iface=$1 ssid=$2 secured=$3 id psk
+
+  id=$(network_known "$ssid" "$iface")
+  if [[ -z $id ]]; then
+    ensure_persist "$iface"
+    id=$(priv wpa_cli -i "$iface" add_network 2>/dev/null | tr -d '\r' | tail -n 1)
+    [[ $id =~ ^[0-9]+$ ]] || { echo "Failed to create network entry." >&2; return 1; }
+    priv wpa_cli -i "$iface" set_network "$id" ssid "\"$ssid\"" >/dev/null
+    if [[ $secured == 1 ]]; then
+      # Read the passphrase without echo. wpa_cli takes it as an argument (root
+      # process list only); it is stored hashed in wpa_supplicant.conf (0600).
+      read -rs -p "Passphrase for \"$ssid\": " psk; echo
+      [[ -n $psk ]] || { echo "No passphrase given." >&2; return 1; }
+      priv wpa_cli -i "$iface" set_network "$id" psk "\"$psk\"" >/dev/null
+    else
+      priv wpa_cli -i "$iface" set_network "$id" key_mgmt NONE >/dev/null
+    fi
+  fi
+
+  priv wpa_cli -i "$iface" enable_network "$id" >/dev/null
+  priv wpa_cli -i "$iface" select_network "$id" >/dev/null
+  priv wpa_cli -i "$iface" save_config >/dev/null 2>&1 || true
+
+  echo "Associating with \"$ssid\"..."
+  # Re-run DHCP on the interface (association may have changed the L2 link).
+  priv service dhclient restart "$iface" >/dev/null 2>&1 ||
+    priv dhclient "$iface" >/dev/null 2>&1 || true
+
+  local i
+  for i in 1 2 3 4 5 6 7 8; do
+    ifconfig "$iface" 2>/dev/null | grep -q 'status: associated' && break
+    sleep 1
+  done
+  echo; show_status "$iface"
+}
+
+iface=$(wlan_iface)
+
+case "${1:-}" in
+  scan)
+    do_scan_refresh "$iface"
+    printf 'SSID\tSIGNAL\tSECURED\n'
+    scan_rows "$iface" | sort -t$'\t' -k2 -nr
+    exit 0 ;;
+  status)
+    show_status "$iface"; exit 0 ;;
+  "") ;;
+  *) echo "Usage: omarchy-wifi-freebsd [scan|status]" >&2; exit 2 ;;
+esac
+
+command -v fzf >/dev/null 2>&1 || { echo "fzf is required for the selector." >&2; exit 1; }
+
+echo "Scanning on $iface..."
+do_scan_refresh "$iface"
+
+current=$(ifconfig "$iface" 2>/dev/null | sed -n 's/.*ssid "\{0,1\}\([^"]*\)"\{0,1\} channel.*/\1/p' | head -n 1)
+
+# Build the fzf menu: lock glyph + SSID + signal%, tab-delimited so the SSID
+# (which may contain spaces) is recovered cleanly from the first field.
+menu=$(scan_rows "$iface" | sort -t$'\t' -k2 -nr | while IFS=$'\t' read -r ssid pct secured; do
+  lock=$([[ $secured == 1 ]] && echo "" || echo "")
+  mark=$([[ $ssid == "$current" ]] && echo "* " || echo "  ")
+  printf '%s\t%s%s %s  (%s%%)\n' "$ssid" "$mark" "$lock" "$ssid" "$pct"
+done)
+
+[[ -n $menu ]] || { echo "No networks found." >&2; exit 1; }
+
+choice=$(printf '%s\n' "$menu" | fzf --delimiter='\t' --with-nth=2 \
+  --prompt="Wi-Fi > " --height=40% --reverse --no-multi)
+[[ -n $choice ]] || { echo "Cancelled."; exit 0; }
+
+ssid=${choice%%$'\t'*}
+secured=$(scan_rows "$iface" | awk -F'\t' -v s="$ssid" '$1 == s { print $3; exit }')
+
+connect "$iface" "$ssid" "${secured:-1}"
