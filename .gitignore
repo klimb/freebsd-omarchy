@@ -1,0 +1,20 @@
+# FreeBSD test VM — large/generated/secret artifacts (keep scripts, drop these).
+test/vm/*.qcow2
+test/vm/*.qcow2.xz
+test/vm/*.raw
+test/vm/*.raw.xz
+test/vm/*.fd
+test/vm/CHECKSUM.SHA256
+test/vm/known_hosts
+test/vm/vm_key
+test/vm/vm_key.pub
+test/vm/*.log
+
+# Physical test laptop — secrets/generated artifacts (keep scripts, drop these).
+test/lab/known_hosts
+test/lab/lab_key
+test/lab/lab_key.pub
+test/lab/*.log
+
+# macOS
+.DS_Store

@@ -1,0 +1,15 @@
+Omarchy is a beautiful, modern and opinionated Hyprland desktop originally
+built for Arch Linux by DHH. This port brings the Omarchy experience to
+FreeBSD, stripped to the essentials that make sense on a vanilla, minimal
+install: the Hyprland compositor, the QuickShell top bar, a themed terminal,
+Wayland utilities, fonts, themes, and a TTY-launch workflow.
+
+The port pulls in the desktop dependencies and installs two helpers:
+
+  omarchy-session  Launch the desktop from a TTY (sets up the FreeBSD Wayland
+                   environment and execs Hyprland).
+  omarchy-setup    Clone the Omarchy dotfiles into your home directory and
+                   apply the FreeBSD path adaptations.
+
+After installing, run `omarchy-setup` once, add yourself to the video group,
+then log in on a TTY and run `omarchy-session`.

@@ -1,0 +1,58 @@
+#!/bin/sh
+#
+# omarchy-session — launch the Omarchy Hyprland desktop from a FreeBSD TTY.
+#
+# The x11-wm/hyprland port already ships its own `start-hyprland`; this wrapper
+# layers the Omarchy/FreeBSD-specific environment on top of it.
+#
+# Usage: log in on a virtual terminal and run `omarchy-session`.
+
+# Seat access (FreeBSD uses seatd instead of systemd-logind).
+export LIBSEAT_BACKEND=seatd
+
+# Terminals (foot, ...) spawn $SHELL; make it the user's real login shell so
+# they load Omarchy's bash config (aliases like `ls` -> eza, the prompt). A TTY
+# session started before the login shell was changed carries a stale SHELL.
+_login_shell="$(getent passwd "$(id -un)" 2>/dev/null | awk -F: '{print $NF}')"
+[ -x "$_login_shell" ] && export SHELL="$_login_shell"
+unset _login_shell
+
+# Wayland / XDG session identity.
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=Hyprland
+export XDG_SESSION_DESKTOP=Hyprland
+
+# Omarchy's Lua config (hyprland.lua) and its bin/ helpers live in the cloned
+# source tree; hyprland.lua reads OMARCHY_PATH to find default/hypr/bootstrap.lua.
+export OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/src/omarchy}"
+
+# Put Omarchy's helper scripts and the uwsm-app shim on PATH.
+PATH="$OMARCHY_PATH/bin:$HOME/.local/bin:$PATH"
+export PATH
+
+# FreeBSD has no systemd-logind to create XDG_RUNTIME_DIR. Prefer an existing
+# one (e.g. from consolekit2 at /var/run/user/UID); otherwise fall back to /tmp.
+if [ -z "$XDG_RUNTIME_DIR" ]; then
+	XDG_RUNTIME_DIR="/var/run/user/$(id -u)"
+	[ -d "$XDG_RUNTIME_DIR" ] || XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
+	export XDG_RUNTIME_DIR
+fi
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 0700 "$XDG_RUNTIME_DIR"
+
+# Qt / QuickShell (the Omarchy top bar) on Wayland.
+export QT_QPA_PLATFORM=wayland
+export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+
+# Chromium / Electron on Wayland.
+export ELECTRON_OZONE_PLATFORM_HINT=wayland
+
+# dbus session (portals, notifications). Only wrap if not already inside one.
+# Exec Hyprland directly (not the port's start-hyprland wrapper): the wrapper
+# resets the environment, dropping the QT_QPA_PLATFORM/Wayland exports above
+# that QuickShell and other Qt clients need.
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null 2>&1; then
+	exec dbus-run-session -- Hyprland
+fi
+
+exec Hyprland

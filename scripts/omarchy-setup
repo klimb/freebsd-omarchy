@@ -1,0 +1,373 @@
+#!/bin/sh
+#
+# omarchy-setup — install Omarchy dotfiles into the current user's home and
+# apply the FreeBSD path/command adaptations.
+#
+# Safe to re-run: existing configs are backed up to ~/.config/<name>.bak-<ts>.
+#
+# Environment overrides:
+#   OMARCHY_REPO    git URL to clone       (default: https://github.com/omacom/omarchy)
+#   OMARCHY_BRANCH  branch to check out    (default: quattro)
+#   OMARCHY_SRC     local clone location   (default: ~/.local/src/omarchy)
+
+set -eu
+
+OMARCHY_REPO="${OMARCHY_REPO:-https://github.com/omacom/omarchy}"
+OMARCHY_BRANCH="${OMARCHY_BRANCH:-quattro}"
+OMARCHY_SRC="${OMARCHY_SRC:-$HOME/.local/src/omarchy}"
+
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+
+log() { printf '==> %s\n' "$*"; }
+
+require() {
+	command -v "$1" >/dev/null 2>&1 || {
+		printf 'error: required command not found: %s\n' "$1" >&2
+		exit 1
+	}
+}
+
+require git
+
+# 1. Fetch (or update) the Omarchy source tree.
+if [ -d "$OMARCHY_SRC/.git" ]; then
+	log "Updating Omarchy source in $OMARCHY_SRC"
+	git -C "$OMARCHY_SRC" fetch --depth 1 origin "$OMARCHY_BRANCH"
+	git -C "$OMARCHY_SRC" checkout -q "$OMARCHY_BRANCH"
+	git -C "$OMARCHY_SRC" reset -q --hard "origin/$OMARCHY_BRANCH"
+else
+	log "Cloning $OMARCHY_REPO ($OMARCHY_BRANCH) into $OMARCHY_SRC"
+	mkdir -p "$(dirname "$OMARCHY_SRC")"
+	git clone --depth 1 -b "$OMARCHY_BRANCH" "$OMARCHY_REPO" "$OMARCHY_SRC"
+fi
+
+mkdir -p "$CONFIG_HOME"
+
+# 2. Copy config subtrees into ~/.config, backing up anything already there.
+#    We copy (not symlink) so the FreeBSD patches below don't dirty the clone.
+CONFIG_DIRS="alacritty btop foot ghostty hypr imv kitty lazygit omarchy tmux waybar"
+for name in $CONFIG_DIRS; do
+	src="$OMARCHY_SRC/config/$name"
+	[ -d "$src" ] || continue
+	dst="$CONFIG_HOME/$name"
+	if [ -e "$dst" ] || [ -L "$dst" ]; then
+		log "Backing up existing $dst -> $dst.bak-$STAMP"
+		mv "$dst" "$dst.bak-$STAMP"
+	fi
+	cp -R "$src" "$dst"
+done
+
+# Single-file configs.
+for f in starship.toml chromium-flags.conf xdg-terminals.list; do
+	src="$OMARCHY_SRC/config/$f"
+	[ -f "$src" ] || continue
+	dst="$CONFIG_HOME/$f"
+	[ -e "$dst" ] && mv "$dst" "$dst.bak-$STAMP"
+	cp "$src" "$dst"
+done
+
+# 3. Wayland session services + Linux-compat shims.
+# Omarchy is built for Arch/systemd and calls Linux-only tools (uwsm-app,
+# setsid, systemd-cat, flock, GNU base64). Provide small shims on ~/.local/bin
+# (which omarchy-session puts on PATH) so the helper scripts run unchanged.
+SHIM_DIR="$HOME/.local/bin"
+mkdir -p "$SHIM_DIR"
+
+write_shim() {
+	name="$1"
+	dst="$SHIM_DIR/$name"
+	cat > "$dst"
+	chmod +x "$dst"
+	log "Installed $name shim to $SHIM_DIR"
+}
+
+# uwsm-app: Arch launches apps via `uwsm-app -- <cmd>`; just run the command.
+write_shim uwsm-app <<'SHIM'
+#!/bin/sh
+[ "${1:-}" = "--" ] && shift
+exec "$@"
+SHIM
+
+# uwsm: Arch's systemd session manager. Omarchy uses `uwsm stop` to end the
+# session (omarchy-system-logout) and `uwsm app -- <cmd>` to launch apps. Map
+# stop -> quit Hyprland (returns to the TTY); app -> run the command; ignore
+# the rest (start/check/finalize) so logout and launches work on FreeBSD.
+# This Hyprland uses the Lua dispatch API, so exit is hl.dsp.exit() (not `exit`).
+write_shim uwsm <<'SHIM'
+#!/bin/sh
+case "${1:-}" in
+	stop) exec hyprctl dispatch "hl.dsp.exit()" ;;
+	app) shift; [ "${1:-}" = "--" ] && shift; exec "$@" ;;
+	*) exit 0 ;;
+esac
+SHIM
+
+# setsid: absent in FreeBSD base. Hyprland already reaps children, so drop
+# setsid's flags and run the command directly.
+write_shim setsid <<'SHIM'
+#!/bin/sh
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-f|--fork|-w|--wait|-c|--ctty) shift ;;
+		--) shift; break ;;
+		-*) shift ;;
+		*) break ;;
+	esac
+done
+exec "$@"
+SHIM
+
+# systemd-cat: no journal on FreeBSD. Drop logging flags, exec the program so
+# its output inherits the caller's stdio (Hyprland captures it).
+write_shim systemd-cat <<'SHIM'
+#!/bin/sh
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-t|--identifier|-p|--priority) shift 2 ;;
+		--) shift; break ;;
+		-*) shift ;;
+		*) break ;;
+	esac
+done
+exec "$@"
+SHIM
+
+# flock: FreeBSD base uses lockf, not flock. A child cannot hold a lock on a
+# caller-owned fd, so provide best-effort no-op locking (returns "acquired").
+# The file+command form is honored by running the command.
+write_shim flock <<'SHIM'
+#!/bin/sh
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-w|--timeout) shift 2 ;;
+		-n|--nonblock|-x|--exclusive|-s|--shared|-u|--unlock|-w*|-E*) shift ;;
+		--) shift; break ;;
+		-*) shift ;;
+		*) break ;;
+	esac
+done
+[ $# -ge 1 ] && shift    # drop the fd/file operand
+[ $# -ge 1 ] && exec "$@"
+exit 0
+SHIM
+
+# base64: FreeBSD base lacks GNU base64; map the flags Omarchy uses to openssl.
+write_shim base64 <<'SHIM'
+#!/bin/sh
+decode=0 file=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-d|--decode) decode=1; shift ;;
+		-w|--wrap) shift 2 ;;
+		-w*|--wrap=*|-i|--ignore-garbage) shift ;;
+		--) shift; break ;;
+		-*) shift ;;
+		*) file="$1"; shift ;;
+	esac
+done
+if [ "$decode" -eq 1 ]; then
+	[ -n "$file" ] && exec openssl base64 -d -A -in "$file"
+	exec openssl base64 -d -A
+else
+	[ -n "$file" ] && exec openssl base64 -A -in "$file"
+	exec openssl base64 -A
+fi
+SHIM
+
+# stat: Omarchy scripts use GNU `stat -c/--format` with %Y (mtime), %s (size),
+# %a (perms). Translate those to FreeBSD `stat -f` (%m/%z/%Lp); pass any
+# non-GNU invocation straight through to the base stat.
+write_shim stat <<'SHIM'
+#!/bin/sh
+real=/usr/bin/stat
+case " $* " in
+	*" -c "*|*" --format "*|*" --format="*|*" -Lc "*|*-c%*|*-Lc%*) ;;
+	*) exec "$real" "$@" ;;
+esac
+follow=""; fmt=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-L) follow="-L"; shift ;;
+		-Lc) follow="-L"; fmt="$2"; shift 2 ;;
+		-Lc*) follow="-L"; fmt="${1#-Lc}"; shift ;;
+		-c) fmt="$2"; shift 2 ;;
+		-c*) fmt="${1#-c}"; shift ;;
+		--format=*) fmt="${1#--format=}"; shift ;;
+		--format) fmt="$2"; shift 2 ;;
+		--) shift; break ;;
+		-*) shift ;;
+		*) break ;;
+	esac
+done
+bsd=$(printf '%s' "$fmt" | sed -e 's/%Y/%m/g' -e 's/%s/%z/g' -e 's/%a/%Lp/g')
+exec "$real" $follow -f "$bsd" "$@"
+SHIM
+
+# md5sum: FreeBSD has md5(1) in /sbin. Emit GNU's "<hash>  <file>" (or "  -" for
+# stdin); Omarchy only reads the first field. Absolute path: /sbin may be off PATH.
+write_shim md5sum <<'SHIM'
+#!/bin/sh
+if [ "$#" -eq 0 ]; then
+	printf '%s  -\n' "$(/sbin/md5 -q)"
+else
+	for f in "$@"; do printf '%s  %s\n' "$(/sbin/md5 -q "$f")" "$f"; done
+fi
+SHIM
+
+# nproc: absent in FreeBSD base; report the CPU count via sysctl (/sbin).
+write_shim nproc <<'SHIM'
+#!/bin/sh
+exec /sbin/sysctl -n hw.ncpu
+SHIM
+
+# On Arch, systemd user units socket-activate PipeWire and the portals. FreeBSD
+# has none, so start them from Hyprland's autostart. This overwrites the user
+# override file (loaded after Omarchy defaults, where `o` is already defined).
+log "Writing FreeBSD session autostart to $CONFIG_HOME/hypr/autostart.lua"
+mkdir -p "$CONFIG_HOME/hypr"
+cat > "$CONFIG_HOME/hypr/autostart.lua" <<'LUA'
+-- FreeBSD session services (Omarchy's Arch defaults rely on systemd user units).
+-- o.exec_on_start runs the command directly, without uwsm.
+
+-- Audio: PipeWire server, PulseAudio shim, and the WirePlumber session manager.
+o.exec_on_start("pipewire")
+o.exec_on_start("pipewire-pulse")
+o.exec_on_start("wireplumber")
+
+-- Screen-share portal backend (the xdg-desktop-portal frontend is D-Bus
+-- activated on demand). Guard against a double start.
+o.exec_on_start("pgrep -x xdg-desktop-portal-hyprland >/dev/null 2>&1 || " ..
+	"/usr/local/libexec/xdg-desktop-portal-hyprland")
+
+-- Add your own session apps here, e.g.:
+-- o.launch_on_start("my-service")
+LUA
+
+# Silence startup warnings that don't apply on FreeBSD. omarchy-session execs
+# Hyprland directly (not the start-hyprland watchdog) and XDG_RUNTIME_DIR is
+# /var/run/user or /tmp; append the disables to the loaded looknfeel module.
+log "Disabling FreeBSD-inapplicable Hyprland warnings in $CONFIG_HOME/hypr/looknfeel.lua"
+if ! grep -q 'disable_watchdog_warning' "$CONFIG_HOME/hypr/looknfeel.lua" 2>/dev/null; then
+	cat >> "$CONFIG_HOME/hypr/looknfeel.lua" <<'LUA'
+
+-- FreeBSD: no start-hyprland watchdog, non-standard XDG_RUNTIME_DIR.
+hl.config({
+	misc = {
+		disable_watchdog_warning = true,
+		disable_xdg_env_checks = true,
+	},
+})
+LUA
+fi
+
+# 4. FreeBSD adaptations on the copied files.
+log "Applying FreeBSD path/command adaptations"
+# 3a. Linux FHS paths -> FreeBSD LOCALBASE.
+find "$CONFIG_HOME" -type f \( -name '*.conf' -o -name '*.toml' -o -name '*.lua' \
+	-o -name '*.sh' -o -name '*.qml' -o -name '*.jsonc' \) -print 2>/dev/null |
+	while IFS= read -r file; do
+		# /usr/bin and /usr/share belong under /usr/local on FreeBSD.
+		sed -i '' -e 's,/usr/bin/,/usr/local/bin/,g' \
+			-e 's,/usr/share/,/usr/local/share/,g' "$file" 2>/dev/null ||
+			sed -i -e 's,/usr/bin/,/usr/local/bin/,g' \
+				-e 's,/usr/share/,/usr/local/share/,g' "$file"
+	done
+
+# 3b. Shebangs: Omarchy's ~440 helper scripts are #!/bin/bash, but FreeBSD ships
+# bash in LOCALBASE (/usr/local/bin/bash) with no /bin/bash. Without this every
+# omarchy-* helper (the bar launcher, keybind commands, ...) fails with
+# "not found", leaving only a bare cursor. Rewrite line 1 to the real bash path.
+BASH_BIN="$(command -v bash 2>/dev/null || echo /usr/local/bin/bash)"
+log "Rewriting #!/bin/bash shebangs -> #!$BASH_BIN in $OMARCHY_SRC"
+grep -rIl --exclude-dir=.git '^#!/bin/bash' "$OMARCHY_SRC" 2>/dev/null |
+	while IFS= read -r file; do
+		tmp="$file.omarchytmp.$$"
+		# Replace only the interpreter on line 1; keep any args after `bash`.
+		sed "1s,^#!/bin/bash,#!$BASH_BIN," "$file" > "$tmp" &&
+			cat "$tmp" > "$file"    # truncate-in-place keeps the exec bit
+		rm -f "$tmp"
+	done
+
+# Rebrand the presentation banner (omarchy-show-logo cats $OMARCHY_PATH/logo.txt)
+# to "FreeBSD". Omarchy's own FIGlet font is uppercase-only, so use figlet's
+# `big` font to keep the FreeBSD casing. Skip if figlet is unavailable.
+if command -v figlet >/dev/null 2>&1; then
+	figlet -f big -w 120 FreeBSD > "$OMARCHY_SRC/logo.txt"
+	log "Rebranded logo.txt to FreeBSD"
+fi
+
+# 5. Set a default theme. Omarchy config files include
+# ~/.local/state/omarchy/current/theme/{foot.ini,alacritty.toml,...}; that
+# "current" tree is created by omarchy-theme-set, which upstream runs from a
+# systemd first-run unit we don't have. Without it every terminal/bar config
+# fails with "no such file". Run it headless+offline (no gum/hyprctl/network).
+OMARCHY_THEME="${OMARCHY_THEME:-tokyo-night}"
+log "Setting default theme: $OMARCHY_THEME"
+OMARCHY_PATH="$OMARCHY_SRC" PATH="$OMARCHY_SRC/bin:$HOME/.local/bin:$PATH" \
+	OMARCHY_THEME_HEADLESS=1 OMARCHY_THEME_OFFLINE=1 \
+	"$OMARCHY_SRC/bin/omarchy-theme-set" "$OMARCHY_THEME" >/dev/null 2>&1 ||
+	log "warning: could not set default theme (set it later: omarchy-theme-set $OMARCHY_THEME)"
+
+# 6. Menu overrides. The QuickShell menu merges a user extension over the
+# defaults by id (~/.config/omarchy/extensions/omarchy-menu.jsonc). Repoint the
+# Arch "Update > Omarchy" entry (pacman/AUR) at a FreeBSD pkg upgrade. Omitting
+# icon/iconFont keeps the default glyph via the merge.
+log "Writing FreeBSD menu overrides to $CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc"
+mkdir -p "$CONFIG_HOME/omarchy/extensions"
+cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
+{
+  // FreeBSD overrides, merged over default/omarchy/omarchy-menu.jsonc by id.
+  // "Update > Omarchy" (Arch pacman/AUR) -> "Update > FreeBSD" (pkg upgrade).
+  // icon = nf-linux-freebsd (beastie); iconFont "" renders it from the default
+  // nerd font instead of the "omarchy" logo font the default entry uses.
+  "update.omarchy": {
+    "icon": "",
+    "iconFont": "",
+    "label": "FreeBSD",
+    "action": "omarchy-launch-floating-terminal-with-presentation omarchy-update-freebsd"
+  },
+
+  // Package install/remove use pacman/yay; repoint at pkg. Hide AUR (no
+  // FreeBSD equivalent) by making its visibility guard always fail.
+  "install.package": {
+    "action": "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install-freebsd"
+  },
+  "install.aur": { "when": "false" },
+  "remove.package": {
+    "action": "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-remove-freebsd"
+  }
+}
+JSONC
+
+# 7. Interactive shell. Omarchy's aliases/prompt (e.g. `ls` -> eza --icons) live
+# in its bash config; FreeBSD's default /bin/sh never loads them. Point the
+# user's bash startup at Omarchy's bashrc (install.sh switches the login shell
+# to bash). OMARCHY_PATH/PATH are set here first since Omarchy's env-bootstrap
+# uses a Linux path that does not exist on FreeBSD.
+log "Writing ~/.bashrc and ~/.bash_profile to load Omarchy's shell config"
+for f in "$HOME/.bashrc" "$HOME/.bash_profile"; do
+	[ -e "$f" ] && [ ! -e "$f.bak-$STAMP" ] && mv "$f" "$f.bak-$STAMP"
+done
+cat > "$HOME/.bashrc" <<'BASHRC'
+# Omarchy on FreeBSD: set OMARCHY_PATH/PATH, then load Omarchy's bash config.
+export OMARCHY_PATH="$HOME/.local/src/omarchy"
+case ":$PATH:" in
+	*":$OMARCHY_PATH/bin:"*) ;;
+	*) export PATH="$OMARCHY_PATH/bin:$HOME/.local/bin:$PATH" ;;
+esac
+# Some login setups omit the LOCALBASE bins; make sure they're present.
+case ":$PATH:" in
+	*":/usr/local/bin:"*) ;;
+	*) export PATH="$PATH:/usr/local/sbin:/usr/local/bin" ;;
+esac
+[ -r "$OMARCHY_PATH/default/bashrc" ] && . "$OMARCHY_PATH/default/bashrc"
+BASHRC
+cat > "$HOME/.bash_profile" <<'BASHPROFILE'
+[ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+BASHPROFILE
+
+log "Done."
+log "Add yourself to the video group (as root) if you have not yet:"
+log "    pw groupmod video -m $(id -un)"
+log "Then log in on a TTY and run: omarchy-session"

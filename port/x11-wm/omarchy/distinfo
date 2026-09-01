@@ -1,0 +1,9 @@
+# Placeholder distinfo.
+#
+# The real checksums MUST be generated on a FreeBSD machine once GH_ACCOUNT is
+# set in the Makefile, by running inside this port directory:
+#
+#     make makesum
+#
+# That command downloads the GitHub tarball and writes the correct TIMESTAMP,
+# SHA256 and SIZE lines below, replacing this file's contents.

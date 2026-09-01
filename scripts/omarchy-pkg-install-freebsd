@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# omarchy-pkg-install-freebsd — fuzzy-pick FreeBSD packages to install.
+#
+# FreeBSD replacement for the pacman-based omarchy-pkg-install. Wired into the
+# menu ("Install > Package") by the extension omarchy-setup writes. Escalates
+# with doas (falls back to sudo/su).
+
+set -eu
+
+sel=$(pkg rquery -a '%n' | sort -u | fzf --multi \
+	--preview 'pkg search {1}' \
+	--preview-label='tab: multi-select, alt-p: toggle preview' \
+	--preview-label-pos='bottom' \
+	--preview-window 'down:65%:wrap' \
+	--bind 'alt-p:toggle-preview' \
+	--color 'pointer:green,marker:green') || exit 0
+
+[ -n "$sel" ] || exit 0
+
+if command -v doas >/dev/null 2>&1; then SUDO=doas
+elif command -v sudo >/dev/null 2>&1; then SUDO=sudo
+else SUDO="su root -c"; fi
+
+# shellcheck disable=SC2086
+if [ "$SUDO" = "su root -c" ]; then
+	su root -c "pkg install -y $(echo "$sel" | tr '\n' ' ')"
+else
+	echo "$sel" | tr '\n' ' ' | xargs $SUDO pkg install -y
+fi

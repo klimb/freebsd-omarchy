@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# omarchy-pkg-remove-freebsd — fuzzy-pick installed FreeBSD packages to remove.
+#
+# FreeBSD replacement for the pacman-based omarchy-pkg-remove. Wired into the
+# menu ("Remove > Package") by the extension omarchy-setup writes. Escalates
+# with doas (falls back to sudo/su).
+
+set -eu
+
+sel=$(pkg query '%n' | sort | fzf --multi \
+	--preview 'pkg info {1}' \
+	--preview-label='tab: multi-select, alt-p: toggle preview' \
+	--preview-label-pos='bottom' \
+	--preview-window 'down:65%:wrap' \
+	--bind 'alt-p:toggle-preview' \
+	--color 'pointer:red,marker:red') || exit 0
+
+[ -n "$sel" ] || exit 0
+
+if command -v doas >/dev/null 2>&1; then SUDO=doas
+elif command -v sudo >/dev/null 2>&1; then SUDO=sudo
+else SUDO="su root -c"; fi
+
+# shellcheck disable=SC2086
+if [ "$SUDO" = "su root -c" ]; then
+	su root -c "pkg delete -y $(echo "$sel" | tr '\n' ' ')"
+else
+	echo "$sel" | tr '\n' ' ' | xargs $SUDO pkg delete -y
+fi

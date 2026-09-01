@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# omarchy-update-freebsd — update FreeBSD packages from the Omarchy menu.
+#
+# Replaces the Arch-specific `omarchy-update` (pacman/AUR) on FreeBSD. Wired in
+# via the user menu extension that omarchy-setup writes
+# (~/.config/omarchy/extensions/omarchy-menu.jsonc -> "Update > FreeBSD").
+#
+# Runs as an unprivileged user, so it escalates: prefer doas, then sudo, then
+# su (which prompts for the root password in the floating terminal).
+
+set -eu
+
+if command -v doas >/dev/null 2>&1; then
+	exec doas sh -c 'pkg update && pkg upgrade'
+elif command -v sudo >/dev/null 2>&1; then
+	exec sudo sh -c 'pkg update && pkg upgrade'
+else
+	echo "==> No doas/sudo found; using su (enter the root password):"
+	exec su root -c 'pkg update && pkg upgrade'
+fi

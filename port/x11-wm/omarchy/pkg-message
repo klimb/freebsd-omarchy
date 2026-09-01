@@ -1,0 +1,26 @@
+[
+{ type: install
+  message: <<EOM
+Omarchy for FreeBSD is installed. To finish setting up your desktop:
+
+  1. Enable the required system services (as root):
+       sysrc seatd_enable=YES
+       sysrc dbus_enable=YES
+       service seatd start
+       service dbus start
+
+  2. Add your user to the video group (seatd + GPU access, as root):
+       pw groupmod video -m <youruser>
+     Then log out and back in for the group change to take effect.
+
+  3. Install the Omarchy dotfiles into your home directory:
+       omarchy-setup
+
+  4. Log in on a TTY and start the desktop:
+       omarchy-session
+
+PipeWire and WirePlumber run as user services and are started from Hyprland's
+autostart; they are not rc.d services.
+EOM
+}
+]
