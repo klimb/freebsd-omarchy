@@ -42,6 +42,11 @@ Two update-safe mechanisms (Omarchy's clone is `git reset --hard`-ed on every
 - `omarchy-setup` patches `omarchy-screensaver` + `omarchy-system-lock` to detect
   the effect by its `screensaver.txt` input-file marker (since `tte`'s process
   name is `python`, not `ttfx`) and swaps Linux `pidwait` for `pkill`.
+- `omarchy-setup` seeds `~/.config/omarchy/branding/screensaver.txt` from
+  `logo.txt` (upstream creates it in a first-run unit we don't run), otherwise
+  `ttfx -i .../screensaver.txt` has no input file. Verified end-to-end on the
+  laptop: `tte` renders the FreeBSD branding and `pgrep`/`pkill -f screensaver.txt`
+  find and stop the process.
 
 ### WiFi — **wip** (FreeBSD-specific, `wpa_supplicant`)
 `nmcli` (14), `NetworkManager` (26), `rfkill` (9), plus `ip`/`iw`/`/sys/class/net`.

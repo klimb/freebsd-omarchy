@@ -466,6 +466,17 @@ if command -v figlet >/dev/null 2>&1; then
 	log "Rebranded logo.txt to FreeBSD"
 fi
 
+# 4b. Screensaver branding. omarchy-screensaver renders
+# ~/.config/omarchy/branding/screensaver.txt with TTE; that file is normally
+# created by omarchy's first-run branding step (a systemd unit we don't run), so
+# without it the screensaver's `ttfx -i .../screensaver.txt` has no input. Seed
+# it from the (now FreeBSD-branded) logo.txt, matching `omarchy-branding-screensaver reset`.
+if [ ! -f "$CONFIG_HOME/omarchy/branding/screensaver.txt" ] && [ -f "$OMARCHY_SRC/logo.txt" ]; then
+	log "Seeding screensaver branding from logo.txt"
+	mkdir -p "$CONFIG_HOME/omarchy/branding"
+	cp "$OMARCHY_SRC/logo.txt" "$CONFIG_HOME/omarchy/branding/screensaver.txt"
+fi
+
 # 5. Set a default theme. Omarchy config files include
 # ~/.local/state/omarchy/current/theme/{foot.ini,alacritty.toml,...}; that
 # "current" tree is created by omarchy-theme-set, which upstream runs from a
