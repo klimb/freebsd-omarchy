@@ -561,6 +561,28 @@ AWK
 	rm -f "$tmp" "$awkprog"
 fi
 
+# 3g. Browser launchers resolve the browser's .desktop file by globbing
+# {~/.local,~/.nix-profile,/usr}/share/applications -- which omits FreeBSD's
+# LOCALBASE (/usr/local/share/applications), so omarchy-launch-webapp and
+# omarchy-launch-browser find no Exec and silently launch nothing (every
+# "Learn" web link, Super+B, etc. dead). Add /usr/local to the brace list.
+# Also, omarchy-launch-webapp's Chromium fallback is "chromium.desktop", but
+# FreeBSD's www/chromium ships "chromium-browser.desktop" (binary `chrome`);
+# rewrite it so webapps launch. Post-reset so it survives updates; idempotent.
+for f in omarchy-launch-webapp omarchy-launch-browser; do
+	lf="$OMARCHY_SRC/bin/$f"
+	[ -f "$lf" ] || continue
+	if ! grep -q ',/usr,/usr/local}/share/applications' "$lf"; then
+		sed -i '' -e 's|,/usr}/share/applications|,/usr,/usr/local}/share/applications|g' "$lf" 2>/dev/null ||
+			sed -i -e 's|,/usr}/share/applications|,/usr,/usr/local}/share/applications|g' "$lf"
+	fi
+done
+WEBAPP="$OMARCHY_SRC/bin/omarchy-launch-webapp"
+if [ -f "$WEBAPP" ] && grep -q '"chromium\.desktop"' "$WEBAPP"; then
+	sed -i '' -e 's|"chromium\.desktop"|"chromium-browser.desktop"|g' "$WEBAPP" 2>/dev/null ||
+		sed -i -e 's|"chromium\.desktop"|"chromium-browser.desktop"|g' "$WEBAPP"
+fi
+
 # Rebrand the presentation banner (omarchy-show-logo cats $OMARCHY_PATH/logo.txt)
 # to "FreeBSD". Omarchy's own FIGlet font is uppercase-only, so use figlet's
 # `big` font to keep the FreeBSD casing. Skip if figlet is unavailable.
@@ -591,6 +613,14 @@ OMARCHY_PATH="$OMARCHY_SRC" PATH="$OMARCHY_SRC/bin:$HOME/.local/bin:$PATH" \
 	OMARCHY_THEME_HEADLESS=1 OMARCHY_THEME_OFFLINE=1 \
 	"$OMARCHY_SRC/bin/omarchy-theme-set" "$OMARCHY_THEME" >/dev/null 2>&1 ||
 	log "warning: could not set default theme (set it later: omarchy-theme-set $OMARCHY_THEME)"
+
+# 5b. Prefer Emacs (Wayland-native emacs-wayland) as the default editor over
+# Omarchy's Neovim. omarchy-launch-editor reads this state file; write it
+# directly (headless, no notification/install path). Override with OMARCHY_EDITOR.
+OMARCHY_EDITOR="${OMARCHY_EDITOR:-emacs}"
+log "Setting default editor: $OMARCHY_EDITOR"
+mkdir -p "$HOME/.local/state/omarchy/defaults"
+printf '%s\n' "$OMARCHY_EDITOR" > "$HOME/.local/state/omarchy/defaults/editor"
 
 # 6. Menu overrides. The QuickShell menu merges a user extension over the
 # defaults by id (~/.config/omarchy/extensions/omarchy-menu.jsonc). Repoint the
@@ -627,7 +657,45 @@ cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
     "icon": "󰖩",
     "label": "Wi-Fi",
     "action": "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-wifi-freebsd"
-  }
+  },
+
+  // "Learn > Omarchy" opens omarchy.org/manual (Arch/Linux-specific, not
+  // relevant here); hide it by making its visibility guard always fail.
+  "learn.omarchy": { "when": "false" },
+
+  // Replace "Learn > Arch" (Arch wiki) with our own "Learn > FreeBSD": hide the
+  // Arch entry and add learn.freebsd (FreeBSD Handbook). New ids are appended
+  // under "learn" by the menu merge. icon = nf-linux-freebsd (beastie); iconFont
+  // "" renders it from the default nerd font.
+  "learn.arch": { "when": "false" },
+  "learn.freebsd": {
+    "icon": "",
+    "iconFont": "",
+    "label": "FreeBSD Handbook",
+    "action": "omarchy-launch-webapp 'https://docs.freebsd.org/en/books/handbook/'"
+  },
+
+  // Replace "Learn > Neovim" (LazyVim) with "Learn > Emacs": hide the Neovim
+  // entry and add learn.emacs (emacs is the preferred editor here). icon = emacs
+  // glyph (nf U+F15C), from the default nerd font.
+  "learn.neovim": { "when": "false" },
+  "learn.emacs": {
+    "icon": "",
+    "label": "Emacs",
+    "action": "omarchy-launch-webapp 'https://www.gnu.org/software/emacs/manual/'"
+  },
+
+  // Linux-only entries with no FreeBSD concept/tooling (their commands are
+  // absent), so they would error or do nothing; hide them:
+  //   style.unlock, update.config.plymouth -> Plymouth boot splash (Linux)
+  //   setup.direct-boot                    -> UKI + efibootmgr direct boot (Linux)
+  //   update.firmware                      -> fwupd/LVFS (no FreeBSD path)
+  //   update.password.drive                -> LUKS drive encryption (FreeBSD uses GELI)
+  "style.unlock": { "when": "false" },
+  "setup.direct-boot": { "when": "false" },
+  "update.firmware": { "when": "false" },
+  "update.config.plymouth": { "when": "false" },
+  "update.password.drive": { "when": "false" }
 }
 JSONC
 

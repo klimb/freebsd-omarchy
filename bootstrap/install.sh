@@ -45,12 +45,14 @@ fi
 # 1. System packages. Origins map to the pkg names FreeBSD ships.
 # bash is required (every omarchy-* helper is #!/bin/bash); socat and
 # xdg-terminal-exec back the launch/monitor helpers; vips (vipsthumbnail) backs
-# the theme/image picker; figlet renders the FreeBSD presentation banner.
+# the theme/image picker; figlet renders the FreeBSD presentation banner;
+# chromium is Omarchy's browser (webapps launch in its --app mode);
+# emacs-wayland is the preferred (Wayland-native) editor.
 PKGS="hyprland seatd bash foot alacritty pipewire wireplumber wl-clipboard grim slurp \
 hyprpicker xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec socat \
 starship zoxide fzf bat eza fd-find ripgrep jq btop lazygit tmux neovim imv git vips figlet gawk lua54 \
 noto-basic nerd-fonts font-awesome dbus py312-terminaltexteffects cmatrix \
-ImageMagick7 mpv pamixer fastfetch wtype unzip qrencode gnome-keyring bash-completion"
+ImageMagick7 mpv pamixer fastfetch wtype unzip qrencode gnome-keyring bash-completion chromium emacs-wayland"
 
 log "Installing packages"
 $SUDO pkg install -y $PKGS

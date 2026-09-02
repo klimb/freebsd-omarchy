@@ -54,7 +54,8 @@ RUN_DEPENDS+=	starship:shells/starship \
 		jq:textproc/jq \
 		btop:sysutils/btop \
 		zoxide:sysutils/zoxide \
-		nvim:editors/neovim
+		nvim:editors/neovim \
+		emacs:editors/emacs@wayland
 
 # Media + desktop utilities present in omarchy-base.packages, confirmed in ports.
 RUN_DEPENDS+=	convert:graphics/ImageMagick7 \
@@ -73,7 +74,7 @@ RUN_DEPENDS+=	${LOCALBASE}/share/fonts/nerd-fonts/SymbolsNerdFont-Regular.ttf:x1
 		font-awesome>0:x11-fonts/font-awesome
 
 OPTIONS_DEFINE=		QUICKSHELL WAYBAR ALACRITTY IMV CHROMIUM
-OPTIONS_DEFAULT=	QUICKSHELL ALACRITTY IMV
+OPTIONS_DEFAULT=	QUICKSHELL ALACRITTY IMV CHROMIUM
 QUICKSHELL_DESC=	Omarchy QML top bar (QuickShell)
 WAYBAR_DESC=		Waybar top bar (fallback if QuickShell is unavailable)
 ALACRITTY_DESC=		Alacritty terminal (alternative to foot)
