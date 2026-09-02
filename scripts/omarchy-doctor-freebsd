@@ -64,7 +64,7 @@ wifi|iwctl|broken|iwd absent; wifi via wpa_supplicant/ifconfig wlan0
 wifi|rfkill|broken|no rfkill; use ifconfig up/down
 bluetooth|bluetoothctl|broken|bluez absent; FreeBSD stack is ng_ubt/hccontrol/bthidd
 bluetooth|bluez|broken|not on FreeBSD
-audio|pactl|partial|provided by pipewire-pulse when installed
+audio|pactl|partial|no PipeWire sink on FreeBSD; volume uses mixer(8) override (omarchy-audio-output-volume)
 audio|wpctl|partial|wireplumber CLI; present when wireplumber installed
 audio|playerctl|partial|MPRIS; needs audio/playerctl package
 display|brightnessctl|shim|omarchy-brightness-display override uses backlight(8); keyboard/mute LED unsupported

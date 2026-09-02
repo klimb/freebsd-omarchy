@@ -114,7 +114,18 @@ not BlueZ. Affected: `omarchy-bluetooth-device`, `omarchy-bluetooth-power`,
   no-op ("no keyboard backlight device"). Same for the `micmute` LED.
 - **todo** `acpi` (6) → `acpiconf`/`sysctl` for battery + thermal.
 
-### Security — **todo**
+### Audio / volume keys — **done**
+PipeWire runs but exposes no output sink on FreeBSD, so `pactl`/`wpctl` (the
+upstream `omarchy-audio-output-volume` backend) can't find anything to control
+("Could not resolve an audio sink"). The real hardware volume is the OSS master
+on the default `pcm` device. FreeBSD override `omarchy-audio-output-volume`
+drives `mixer(8)` (`vol.volume` 0.00–1.00, `vol.mute=toggle`) and shows the same
+`volume-high`/`volume-muted` OSD. Verified live (raise/lower/mute + OSD).
+The volume Fn keys already emit `KEY_VOLUMEUP`/`KEY_VOLUMEDOWN`
+(`XF86AudioRaiseVolume`/`LowerVolume`), which are bound by default — no rebinding
+needed (unlike the brightness keys). Mute key (`XF86AudioMute`) routes to the
+same override's `mute-toggle`. App audio through PipeWire is a separate,
+unsolved item (no PipeWire↔OSS sink bridge yet).
 `fprintd` (8) fingerprint — `libfprint` support on FreeBSD is limited; likely
 hide the fingerprint menu entries.
 
