@@ -4,7 +4,7 @@
 #
 # FreeBSD replacement for the pacman-based omarchy-pkg-install. Wired into the
 # menu ("Install > Package") by the extension omarchy-setup writes. Escalates
-# with doas (falls back to sudo/su).
+# with doas (installed+configured by bootstrap/install.sh).
 
 set -eu
 
@@ -18,13 +18,4 @@ sel=$(pkg rquery -a '%n' | sort -u | fzf --multi \
 
 [ -n "$sel" ] || exit 0
 
-if command -v doas >/dev/null 2>&1; then SUDO=doas
-elif command -v sudo >/dev/null 2>&1; then SUDO=sudo
-else SUDO="su root -c"; fi
-
-# shellcheck disable=SC2086
-if [ "$SUDO" = "su root -c" ]; then
-	su root -c "pkg install -y $(echo "$sel" | tr '\n' ' ')"
-else
-	echo "$sel" | tr '\n' ' ' | xargs $SUDO pkg install -y
-fi
+echo "$sel" | tr '\n' ' ' | xargs doas pkg install -y

@@ -3,18 +3,10 @@
 # omarchy-remove-ai-ollama — remove Ollama on FreeBSD (Remove > AI > Ollama).
 #
 # FreeBSD counterpart to omarchy-install-ai-ollama; upstream's
-# omarchy-remove-ai-ollama shells out to pacman. Escalates with doas (falls
-# back to sudo/su), matching omarchy-pkg-remove-freebsd.
+# omarchy-remove-ai-ollama shells out to pacman. Escalates with doas,
+# matching omarchy-pkg-remove-freebsd.
 
 set -eu
 
-if command -v doas >/dev/null 2>&1; then SUDO=doas
-elif command -v sudo >/dev/null 2>&1; then SUDO=sudo
-else SUDO="su root -c"; fi
-
 echo "Removing Ollama..."
-if [ "$SUDO" = "su root -c" ]; then
-	su root -c "pkg delete -y ollama"
-else
-	$SUDO pkg delete -y ollama
-fi
+doas pkg delete -y ollama

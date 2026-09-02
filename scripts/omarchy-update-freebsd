@@ -12,20 +12,13 @@
 #   3. the ports tree, if present       (/usr/ports)
 #   4. the source tree, if present      (/usr/src)
 #
-# Runs as an unprivileged user, so it re-executes itself as root: prefer doas,
-# then sudo, then su (which prompts for the root password in the terminal).
+# Runs as an unprivileged user, so it re-executes itself as root via doas
+# (installed+configured by bootstrap/install.sh).
 
 set -u
 
 if [ "$(id -u)" -ne 0 ]; then
-	if command -v doas >/dev/null 2>&1; then
-		exec doas "$0" "$@"
-	elif command -v sudo >/dev/null 2>&1; then
-		exec sudo "$0" "$@"
-	else
-		echo "==> No doas/sudo found; using su (enter the root password):"
-		exec su root -c "$0"
-	fi
+	exec doas "$0" "$@"
 fi
 
 step() { printf '\n==> %s\n' "$*"; }

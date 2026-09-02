@@ -24,8 +24,8 @@ Have fun!
 
 There is no `omarchy` package in the official FreeBSD repo yet — it lives here,
 in this repo. Start from a fresh, minimal FreeBSD install and run as your
-**normal user** (not root — Hyprland refuses to run as root) with `sudo` or
-`doas` available.
+**normal user** (not root — Hyprland refuses to run as root) with `doas`
+already installed and configured (or run the bootstrap script as root once).
 
 ### Quick start (bootstrap script)
 

@@ -10,9 +10,7 @@ set -u
 
 priv() {
   if [[ $(id -u) -eq 0 ]]; then "$@"
-  elif command -v doas >/dev/null 2>&1; then doas "$@"
-  elif command -v sudo >/dev/null 2>&1; then sudo "$@"
-  else su root -c "$*"; fi
+  else doas "$@"; fi
 }
 
 dev=${1:-}

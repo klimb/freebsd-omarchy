@@ -4,7 +4,8 @@
 # not want to use the x11-wm/omarchy port. Installs packages, enables the
 # minimal services, fixes group membership, and runs the dotfile setup.
 #
-# Run as a regular user with sudo/doas available, from a fresh FreeBSD install:
+# Run as root, or as a regular user with doas already installed and configured,
+# from a fresh FreeBSD install:
 #     sh install.sh
 #
 # Environment overrides:
@@ -15,15 +16,15 @@ set -eu
 
 OMARCHY_BRANCH="${OMARCHY_BRANCH:-quattro}"
 
-# Pick a privilege escalation tool for the root-only steps.
+# Pick a privilege escalation tool for the root-only steps. Only doas is
+# supported (this script installs+configures it below for later runs); sudo is
+# not used anywhere in this repo.
 if [ "$(id -u)" -eq 0 ]; then
 	SUDO="${SUDO:-}"
 elif command -v doas >/dev/null 2>&1; then
 	SUDO="${SUDO:-doas}"
-elif command -v sudo >/dev/null 2>&1; then
-	SUDO="${SUDO:-sudo}"
 else
-	echo "error: need root, sudo, or doas to install packages" >&2
+	echo "error: need root or doas to install packages" >&2
 	exit 1
 fi
 
