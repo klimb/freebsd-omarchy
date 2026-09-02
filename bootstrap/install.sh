@@ -48,12 +48,14 @@ fi
 # the theme/image picker; figlet renders the FreeBSD presentation banner;
 # chromium is Omarchy's browser (webapps launch in its --app mode);
 # emacs-wayland is the preferred (Wayland-native) editor; hyprlock is the screen
-# locker (Omarchy's QuickShell lock can't PAM-auth as non-root on FreeBSD).
+# locker (Omarchy's QuickShell lock can't PAM-auth as non-root on FreeBSD);
+# nautilus is the file manager (Super+Shift+F) and xdg-utils backs `xdg-open`
+# (the shell `open` function, e.g. `open .`).
 PKGS="hyprland seatd bash foot alacritty pipewire wireplumber wl-clipboard grim slurp \
-hyprpicker xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec socat \
+hyprpicker xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec xdg-utils socat \
 starship zoxide fzf bat eza fd-find ripgrep jq btop lazygit tmux neovim imv git vips figlet gawk lua54 \
 noto-basic nerd-fonts font-awesome dbus py312-terminaltexteffects cmatrix \
-ImageMagick7 mpv wf-recorder ffmpeg pamixer fastfetch wtype unzip libqrencode gnome-keyring bash-completion chromium emacs-wayland hyprlock"
+ImageMagick7 mpv wf-recorder ffmpeg pamixer fastfetch wtype unzip libqrencode gnome-keyring bash-completion chromium emacs-wayland hyprlock nautilus"
 
 log "Installing packages"
 $SUDO pkg install -y $PKGS

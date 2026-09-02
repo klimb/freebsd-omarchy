@@ -41,6 +41,8 @@ RUN_DEPENDS=	Hyprland:x11-wm/hyprland \
 		hyprpicker:x11/hyprpicker \
 		xdg-desktop-portal-hyprland>0:x11/xdg-desktop-portal-hyprland \
 		xdg-desktop-portal-gtk>0:x11/xdg-desktop-portal-gtk \
+		xdg-open:devel/xdg-utils \
+		nautilus:x11-fm/nautilus \
 		pipewire>0:multimedia/pipewire \
 		wireplumber>0:multimedia/wireplumber \
 		git:devel/git

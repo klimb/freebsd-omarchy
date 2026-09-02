@@ -626,6 +626,27 @@ if [ -f "$WEBAPP" ] && grep -q '"chromium\.desktop"' "$WEBAPP"; then
 		sed -i -e 's|"chromium\.desktop"|"chromium-browser.desktop"|g' "$WEBAPP"
 fi
 
+# 3h. File manager default. omarchy's shell `open()` function (used by e.g.
+# `open .`) is just `xdg-open`, which resolves inode/directory via
+# mimeapps.list; without an explicit default there's nothing to fall back on.
+# Point it at nautilus (also bound to Super+Shift+F). Update-safe: lives in
+# ~/.config, untouched by the clone reset.
+MIMEAPPS="$CONFIG_HOME/mimeapps.list"
+if command -v nautilus >/dev/null 2>&1 && ! grep -q '^inode/directory=' "$MIMEAPPS" 2>/dev/null; then
+	log "Setting nautilus as the default file manager (inode/directory)"
+	mkdir -p "$CONFIG_HOME"
+	if [ -f "$MIMEAPPS" ] && grep -q '^\[Default Applications\]' "$MIMEAPPS"; then
+		awk '{ print } /^\[Default Applications\]/ { print "inode/directory=org.gnome.Nautilus.desktop" }' \
+			"$MIMEAPPS" > "$MIMEAPPS.omarchytmp.$$" && mv "$MIMEAPPS.omarchytmp.$$" "$MIMEAPPS"
+	else
+		{
+			printf '[Default Applications]\ninode/directory=org.gnome.Nautilus.desktop\n'
+			[ -f "$MIMEAPPS" ] && cat "$MIMEAPPS"
+		} > "$MIMEAPPS.omarchytmp.$$"
+		mv "$MIMEAPPS.omarchytmp.$$" "$MIMEAPPS"
+	fi
+fi
+
 # Rebrand the presentation banner (omarchy-show-logo cats $OMARCHY_PATH/logo.txt)
 # to "FreeBSD". Omarchy's own FIGlet font is uppercase-only, so use figlet's
 # `big` font to keep the FreeBSD casing. Skip if figlet is unavailable.
