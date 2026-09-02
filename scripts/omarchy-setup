@@ -372,6 +372,27 @@ hl.config({
 LUA
 fi
 
+# Cursor theme. Omarchy sets only the cursor SIZE and relies on a system default
+# cursor theme that Arch provides but FreeBSD does not, so Hyprland falls back to
+# its built-in teardrop cursor. FreeBSD also installs icon/cursor themes under
+# /usr/local/share/icons, which is not on the default XCursor search path. Point
+# XCURSOR_PATH there and select an installed theme (prefer Adwaita).
+CURSOR_THEME=""
+for c in Adwaita default; do
+	[ -d "/usr/local/share/icons/$c/cursors" ] && { CURSOR_THEME=$c; break; }
+done
+if [ -n "$CURSOR_THEME" ] && ! grep -q 'XCURSOR_PATH' "$CONFIG_HOME/hypr/looknfeel.lua" 2>/dev/null; then
+	log "Setting cursor theme $CURSOR_THEME in $CONFIG_HOME/hypr/looknfeel.lua"
+	cat >> "$CONFIG_HOME/hypr/looknfeel.lua" <<LUA
+
+-- FreeBSD: cursor themes live under /usr/local/share/icons (not on the default
+-- XCursor path) and no system cursor theme is set, so Hyprland shows its builtin
+-- teardrop cursor. Point XCursor at those dirs and select an installed theme.
+hl.env("XCURSOR_PATH", "/usr/local/share/icons:/usr/share/icons:$HOME/.local/share/icons:$HOME/.icons")
+hl.env("XCURSOR_THEME", "$CURSOR_THEME")
+LUA
+fi
+
 # Some FreeBSD laptops (e.g. ThinkPads) report the brightness Fn keys as plain
 # F5/F6 (KEY_F5/KEY_F6) rather than XF86MonBrightness*, so Omarchy's default
 # brightness binds never fire. Opt in with OMARCHY_BRIGHTNESS_FN_KEYS=1 to bind

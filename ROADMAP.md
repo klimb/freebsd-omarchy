@@ -126,6 +126,16 @@ The volume Fn keys already emit `KEY_VOLUMEUP`/`KEY_VOLUMEDOWN`
 needed (unlike the brightness keys). Mute key (`XF86AudioMute`) routes to the
 same override's `mute-toggle`. App audio through PipeWire is a separate,
 unsolved item (no PipeWire↔OSS sink bridge yet).
+
+### Cursor — **done**
+Omarchy sets only the cursor *size*; on Arch a system default cursor theme
+exists, but FreeBSD has none, so Hyprland shows its built-in teardrop cursor.
+FreeBSD also installs cursor themes under `/usr/local/share/icons`, which isn't
+on the default `XCursor` search path. `omarchy-setup` sets `XCURSOR_PATH` (adding
+the LOCALBASE icon dirs) and `XCURSOR_THEME` (prefers `Adwaita`) via `hl.env` in
+`~/.config/hypr/looknfeel.lua`. Verified live.
+
+### Security — **todo**
 `fprintd` (8) fingerprint — `libfprint` support on FreeBSD is limited; likely
 hide the fingerprint menu entries.
 
