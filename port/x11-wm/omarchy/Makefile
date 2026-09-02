@@ -56,6 +56,17 @@ RUN_DEPENDS+=	starship:shells/starship \
 		zoxide:sysutils/zoxide \
 		nvim:editors/neovim
 
+# Media + desktop utilities present in omarchy-base.packages, confirmed in ports.
+RUN_DEPENDS+=	convert:graphics/ImageMagick7 \
+		mpv:multimedia/mpv \
+		pamixer:audio/pamixer \
+		fastfetch:sysutils/fastfetch \
+		wtype:x11/wtype \
+		unzip:archivers/unzip \
+		qrencode:graphics/qrencode \
+		gnome-keyring-daemon:security/gnome-keyring \
+		bash-completion>0:shells/bash-completion
+
 # Fonts for the Omarchy look.
 RUN_DEPENDS+=	${LOCALBASE}/share/fonts/nerd-fonts/SymbolsNerdFont-Regular.ttf:x11-fonts/nerd-fonts \
 		noto-basic>0:x11-fonts/noto-basic \

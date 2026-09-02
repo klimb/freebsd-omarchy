@@ -97,12 +97,52 @@ hide the fingerprint menu entries.
 ---
 
 ## Excluded (won't fix)
-- **Docker** (34) — not supported on FreeBSD (per request).
+- **Docker** (34) — Linux-specific; not supported on FreeBSD. Preferred
+  alternative: [Sylve](https://github.com/AlchemillaHQ/Sylve), a
+  FreeBSD-native VM/container manager. Omarchy's Docker menu entries should
+  either be hidden on FreeBSD or replaced with Sylve equivalents.
 - **Plymouth** (26) — boot splash; no FreeBSD equivalent.
 - **pacman / yay / paru / makepkg** — Arch package tooling; replaced by the
   `omarchy-pkg-*-freebsd` helpers (pkg). AUR entries hidden in the menu.
 - **flatpak** (5) — not on FreeBSD.
 - **fwupdmgr** — firmware update daemon; not on FreeBSD.
+
+## Package gap audit (omarchy-base.packages vs our deps) — **done 2026-09**
+
+Cross-referenced omarchy's upstream `install/omarchy-base.packages` against the
+FreeBSD port Makefile and bootstrap. Results:
+
+**Added** (confirmed in FreeBSD ports, now in Makefile + bootstrap):
+
+| Package | Port | Why |
+|---|---|---|
+| `ImageMagick7` | `graphics/ImageMagick7` | Theme/wallpaper color extraction |
+| `mpv` | `multimedia/mpv` | Video player |
+| `pamixer` | `audio/pamixer` | Volume control CLI (keybind scripts) |
+| `fastfetch` | `sysutils/fastfetch` | System info on shell open |
+| `wtype` | `x11/wtype` | Wayland keyboard input simulator |
+| `unzip` | `archivers/unzip` | ZIP extraction |
+| `qrencode` | `graphics/qrencode` | QR code (omarchy-network-qr) |
+| `gnome-keyring` | `security/gnome-keyring` | Credential store |
+| `bash-completion` | `shells/bash-completion` | Tab completion |
+
+**Still to verify on target box** (`make search name=<pkg>` needed):
+
+- `hyprsunset` → `x11/hyprsunset`? (night light; listed as "partial" below)
+- `yt-dlp` → `www/yt-dlp`? (note: now pulls npm/deno build deps as of 2026-03)
+- `udiskie` → `sysutils/udiskie`? (USB automount, used in autostart)
+- `ddcutil` → `sysutils/ddcutil`? (monitor brightness via DDC/CI)
+- `gum` → `sysutils/gum`? (Charm interactive prompts)
+- `cups` → `print/cups`? (printing support — consider as optional port flavor)
+- `noto-fonts-emoji` — may be a sub-package of `x11-fonts/noto`
+
+**Excluded — Linux-specific, no FreeBSD equivalent:**
+`bluez`/`bluetoothctl` (FreeBSD has own BT stack), `brightnessctl` (use
+`backlight(8)`), `inotify-tools` (use kqueue), `power-profiles-daemon` (systemd),
+`uwsm` (shimmed), `ufw`/`NetworkManager`, `gpu-screen-recorder` (V4L2/NVENC),
+`wireless-regdb`/`linux-firmware`.
+
+---
 
 ## Already working (present via packages)
 `pactl`, `wpctl` (pipewire/wireplumber), `grim`, `slurp`, `gsettings`.

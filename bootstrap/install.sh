@@ -49,7 +49,8 @@ fi
 PKGS="hyprland seatd bash foot alacritty pipewire wireplumber wl-clipboard grim slurp \
 hyprpicker xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec socat \
 starship zoxide fzf bat eza fd-find ripgrep jq btop lazygit tmux neovim imv git vips figlet \
-noto-basic nerd-fonts font-awesome dbus py312-terminaltexteffects cmatrix"
+noto-basic nerd-fonts font-awesome dbus py312-terminaltexteffects cmatrix \
+ImageMagick7 mpv pamixer fastfetch wtype unzip qrencode gnome-keyring bash-completion"
 
 log "Installing packages"
 $SUDO pkg install -y $PKGS
