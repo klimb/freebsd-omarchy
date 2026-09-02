@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# omarchy-install-ai-ollama — install Ollama on FreeBSD (Install > AI > Ollama).
+#
+# Upstream's action shells out to omarchy-install-app (pacman/AUR via
+# omarchy-pkg-add) and picks between ollama-cuda/ollama-rocm/ollama by probing
+# nvidia-smi/rocminfo. FreeBSD's port is a single misc/ollama with CPU/VULKAN
+# build options instead of separate GPU packages, so just install "ollama".
+# Escalates with doas (falls back to sudo/su), matching omarchy-pkg-install-freebsd.
+
+set -eu
+
+if command -v doas >/dev/null 2>&1; then SUDO=doas
+elif command -v sudo >/dev/null 2>&1; then SUDO=sudo
+else SUDO="su root -c"; fi
+
+echo "Installing Ollama..."
+if [ "$SUDO" = "su root -c" ]; then
+	su root -c "pkg install -y ollama"
+else
+	$SUDO pkg install -y ollama
+fi

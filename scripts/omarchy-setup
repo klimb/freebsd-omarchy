@@ -929,6 +929,31 @@ cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
     "action": "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-remove-freebsd"
   },
 
+  // Install/Remove > AI: every entry except Ollama is a Linux-only AUR binary
+  // (Electron/AppImage desktop app with no FreeBSD build): ChatGPT Desktop,
+  // Dictation (voxtype), Grok Bot, Hermes Desktop, LM Studio, T3 Code. Hide
+  // them (their "disabled" check still passes on FreeBSD, so upstream would
+  // leave them clickable-but-broken). Ollama IS in ports (misc/ollama, a
+  // single CPU/VULKAN build with no ollama-cuda/ollama-rocm split like the AUR
+  // package) so repoint its action at a pkg-based installer instead of
+  // upstream's pacman-based omarchy-install-app.
+  "install.ai.chatgpt": { "when": "false" },
+  "install.ai.dictation": { "when": "false" },
+  "install.ai.grok-bot": { "when": "false" },
+  "install.ai.hermes": { "when": "false" },
+  "install.ai.lm-studio": { "when": "false" },
+  "install.ai.t3-code": { "when": "false" },
+  "install.ai.ollama": {
+    "icon": "",
+    "iconFont": "",
+    "label": "Ollama",
+    "action": "omarchy-launch-floating-terminal-with-presentation omarchy-install-ai-ollama"
+  },
+  "remove.ai.ollama": {
+    "when": "omarchy-cmd-present ollama",
+    "action": "omarchy-launch-floating-terminal-with-presentation omarchy-remove-ai-ollama"
+  },
+
   // The bar's NetworkManager panel does not work on FreeBSD. Provide a working
   // wpa_supplicant selector (scan/pick/connect via fzf) under Setup > Network.
   "setup.network.wifi": {
