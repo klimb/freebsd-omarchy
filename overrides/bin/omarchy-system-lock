@@ -1,0 +1,35 @@
+#!/usr/local/bin/bash
+
+# omarchy:summary=Lock the computer and turn off the display
+# omarchy:group=system
+# omarchy:name=lock
+# omarchy:examples=omarchy system lock
+#
+# FreeBSD override. Omarchy's QuickShell lock (`omarchy-shell lock lock`)
+# authenticates via PAM from a non-root process, which FreeBSD's pam_unix cannot
+# do: /etc/master.passwd is root-only and there is no unix_chkpwd helper. Use
+# hyprlock instead -- same Hyprland ecosystem -- which authenticates the user's
+# own password through the setuid /usr/local/libexec/unix-selfauth-helper via
+# /usr/local/etc/pam.d/hyprlock, leaving /etc/pam.d untouched.
+
+# Already locked? Do not stack a second locker.
+pgrep -x hyprlock >/dev/null 2>&1 && exit 0
+
+# Set keyboard layout to default (first layout) so the password is typed with a
+# predictable layout.
+hyprctl switchxkblayout all 0 >/dev/null 2>&1 || true
+
+# Ensure 1password is locked, matching upstream (no-op if not installed).
+if pgrep -x "1password" >/dev/null && omarchy-cmd-present 1password; then
+  (
+    flock -n 9 || exit 0
+    timeout --kill-after=1s 3s 1password --lock >/dev/null 2>&1 || true
+  ) 9>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-1password-lock.lock" &
+fi
+
+# Do not run the screensaver while locked.
+pkill -f screensaver.txt 2>/dev/null || true
+pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null || true
+
+# Lock (blocks until the correct password unlocks it).
+exec hyprlock

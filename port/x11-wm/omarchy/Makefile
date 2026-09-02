@@ -29,6 +29,7 @@ SHEBANG_FILES=	scripts/omarchy-session scripts/omarchy-setup
 # user's ~/.local/bin by omarchy-setup, not installed here.
 # NOTE: verify every origin on the target box with `make search name=<pkg>`.
 RUN_DEPENDS=	Hyprland:x11-wm/hyprland \
+		hyprlock:x11-wm/hyprlock \
 		seatd:sysutils/seatd \
 		bash:shells/bash \
 		foot:x11/foot \

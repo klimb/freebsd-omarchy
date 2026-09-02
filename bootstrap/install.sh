@@ -47,12 +47,13 @@ fi
 # xdg-terminal-exec back the launch/monitor helpers; vips (vipsthumbnail) backs
 # the theme/image picker; figlet renders the FreeBSD presentation banner;
 # chromium is Omarchy's browser (webapps launch in its --app mode);
-# emacs-wayland is the preferred (Wayland-native) editor.
+# emacs-wayland is the preferred (Wayland-native) editor; hyprlock is the screen
+# locker (Omarchy's QuickShell lock can't PAM-auth as non-root on FreeBSD).
 PKGS="hyprland seatd bash foot alacritty pipewire wireplumber wl-clipboard grim slurp \
 hyprpicker xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec socat \
 starship zoxide fzf bat eza fd-find ripgrep jq btop lazygit tmux neovim imv git vips figlet gawk lua54 \
 noto-basic nerd-fonts font-awesome dbus py312-terminaltexteffects cmatrix \
-ImageMagick7 mpv pamixer fastfetch wtype unzip qrencode gnome-keyring bash-completion chromium emacs-wayland"
+ImageMagick7 mpv pamixer fastfetch wtype unzip qrencode gnome-keyring bash-completion chromium emacs-wayland hyprlock"
 
 log "Installing packages"
 $SUDO pkg install -y $PKGS
