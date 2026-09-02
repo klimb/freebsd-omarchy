@@ -53,7 +53,7 @@ PKGS="hyprland seatd bash foot alacritty pipewire wireplumber wl-clipboard grim 
 hyprpicker xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec socat \
 starship zoxide fzf bat eza fd-find ripgrep jq btop lazygit tmux neovim imv git vips figlet gawk lua54 \
 noto-basic nerd-fonts font-awesome dbus py312-terminaltexteffects cmatrix \
-ImageMagick7 mpv pamixer fastfetch wtype unzip qrencode gnome-keyring bash-completion chromium emacs-wayland hyprlock"
+ImageMagick7 mpv wf-recorder ffmpeg pamixer fastfetch wtype unzip libqrencode gnome-keyring bash-completion chromium emacs-wayland hyprlock"
 
 log "Installing packages"
 $SUDO pkg install -y $PKGS

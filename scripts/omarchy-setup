@@ -738,7 +738,21 @@ cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
   "setup.direct-boot": { "when": "false" },
   "update.firmware": { "when": "false" },
   "update.config.plymouth": { "when": "false" },
-  "update.password.drive": { "when": "false" }
+  "update.password.drive": { "when": "false" },
+
+  // Screen recording is video-only on FreeBSD (wf-recorder; no PipeWire audio
+  // capture or V4L2 webcam overlay yet). Collapse the audio/webcam soundtrack
+  // choices to a single "Record screen" entry; the Stop entry still works via
+  // its `pgrep -f '^gpu-screen-recorder'` guard because the override renames
+  // the wf-recorder process to that.
+  "trigger.capture.screenrecord.no-audio": {
+    "label": "Record screen",
+    "when": "! pgrep -f '^gpu-screen-recorder'",
+    "action": "omarchy-capture-screenrecording"
+  },
+  "trigger.capture.screenrecord.desktop-audio": { "when": "false" },
+  "trigger.capture.screenrecord.microphone": { "when": "false" },
+  "trigger.capture.screenrecord.webcam": { "when": "false" }
 }
 JSONC
 

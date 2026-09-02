@@ -74,6 +74,8 @@ screensaver|ttfx|ok|py-terminaltexteffects (tte); ttfx shim + screensaver.txt ma
 screensaver|tte|broken|terminaltexteffects (py-pip); alternative to ttfx
 capture|grim|ok|installed (x11/grim)
 capture|slurp|ok|installed (x11/slurp)
+capture|wf-recorder|ok|installed (multimedia/wf-recorder); backs video-only screen recording (override)
+capture|gpu-screen-recorder|shim|Linux-only (KMS/VAAPI/NVENC); omarchy-capture-screenrecording override records video with wf-recorder instead
 capture|hyprshot|partial|present only if packaged; grim+slurp cover screenshots
 capture|satty|partial|annotation tool; optional
 package|pacman|exclude|Arch; replaced by omarchy-pkg-*-freebsd (pkg)

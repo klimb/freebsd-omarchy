@@ -1,0 +1,160 @@
+#!/usr/local/bin/bash
+
+# omarchy:summary=Start or stop screen recording (FreeBSD: wf-recorder, video only)
+# omarchy:group=capture
+# omarchy:args=[--fullscreen] [--resolution=<size>] [--stop-recording]
+# omarchy:examples=omarchy screenrecord | omarchy capture screenrecording --fullscreen
+# omarchy:aliases=omarchy screenrecord
+#
+# FreeBSD reimplementation of the gpu-screen-recorder-based upstream. gpu-screen-recorder
+# is Linux (KMS/VAAPI/NVENC) specific and is not in the FreeBSD ports tree, so this
+# records with wf-recorder (wlr-screencopy) instead. This is VIDEO ONLY: desktop/mic
+# audio and the webcam overlay depend on PipeWire node capture and V4L2, neither of
+# which is wired up here, so --with-desktop-audio / --with-microphone-audio /
+# --with-webcam are accepted (for menu/keybind compatibility) but ignored.
+#
+# The recorder is launched with argv[0]="gpu-screen-recorder" so the unpatched bar
+# indicator and menu guard (`pgrep -f '^gpu-screen-recorder'`) keep detecting an
+# active recording without any QML changes.
+#
+# Env: OMARCHY_SCREENRECORD_DEBUG=true logs wf-recorder's stderr and the picker
+# target to /tmp/omarchy-screenrecord.log.
+
+SCRIPT_ARGS="$*"
+
+# shellcheck source=/dev/null
+[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
+OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+
+if [[ ! -d $OUTPUT_DIR ]]; then
+  omarchy-notification-send -u critical -t 3000 "Screen recording directory does not exist: $OUTPUT_DIR"
+  exit 1
+fi
+
+FULLSCREEN="false"
+STOP_RECORDING="false"
+RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
+
+# The name the running recorder is matched by, so the bar indicator keeps working.
+RECORDER_TAG="gpu-screen-recorder"
+
+LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
+
+for arg in "$@"; do
+  case "$arg" in
+  --fullscreen) FULLSCREEN="true" ;;
+  --stop-recording) STOP_RECORDING="true" ;;
+  # Accepted for compatibility with the menu/keybind, but unsupported here.
+  --with-desktop-audio | --with-microphone-audio | --with-webcam) ;;
+  --webcam-device=* | --webcam-size=* | --resolution=*) ;;
+  esac
+done
+
+toggle_screenrecording_indicator() {
+  omarchy-shell -q omarchy.indicators refresh
+}
+
+screenrecording_active() {
+  pgrep -f "^$RECORDER_TAG" >/dev/null
+}
+
+# Echoes "monitor:NAME" when the selection is a whole monitor, otherwise
+# "geom:X,Y WxH" (slurp's format, which is exactly what wf-recorder -g wants).
+# Returns non-zero if the user cancelled the picker.
+select_capture_target() {
+  local target
+  target=$(omarchy-capture-region smart --match-monitor) || return 1
+
+  if [[ $target == monitor:* ]]; then
+    echo "$target"
+    return
+  fi
+
+  [[ $target =~ ^-?[0-9]+,-?[0-9]+[[:space:]][0-9]+x[0-9]+$ ]] || return 1
+  echo "geom:$target"
+}
+
+start_screenrecording() {
+  local capture_args=()
+  local target
+
+  if [[ $FULLSCREEN == "true" ]]; then
+    target="monitor:$(omarchy-hyprland-monitor-focused)"
+    capture_args=(-o "${target#monitor:}")
+  else
+    target=$(select_capture_target) || return 1
+    case $target in
+    monitor:*) capture_args=(-o "${target#monitor:}") ;;
+    geom:*) capture_args=(-g "${target#geom:}") ;;
+    esac
+  fi
+
+  local filename
+  filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
+
+  echo "===== $(date '+%F %T') args: $SCRIPT_ARGS target: $target =====" >>"$LOG_FILE"
+  # exec -a renames the process so the bar's pgrep guard matches it.
+  (exec -a "$RECORDER_TAG" wf-recorder "${capture_args[@]}" -f "$filename") >>"$LOG_FILE" 2>&1 &
+  local pid=$!
+
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null && [[ ! -f $filename ]] && ((waited < 50)); do
+    sleep 0.1
+    ((waited++))
+  done
+
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "$filename" >"$RECORDING_FILE"
+    toggle_screenrecording_indicator
+  else
+    omarchy-notification-send -u critical -t 5000 "Screen recording failed to start" \
+      "Rerun with OMARCHY_SCREENRECORD_DEBUG=true and check /tmp/omarchy-screenrecord.log"
+    return 1
+  fi
+}
+
+stop_screenrecording() {
+  pkill -INT -f "^$RECORDER_TAG" # SIGINT lets wf-recorder write the trailer
+
+  # Wait up to 5 seconds to finish before hard killing.
+  local count=0
+  while pgrep -f "^$RECORDER_TAG" >/dev/null && ((count < 50)); do
+    sleep 0.1
+    count=$((count + 1))
+  done
+
+  toggle_screenrecording_indicator
+
+  if pgrep -f "^$RECORDER_TAG" >/dev/null; then
+    pkill -9 -f "^$RECORDER_TAG"
+    omarchy-notification-send -u critical -t 5000 "Screen recording error" \
+      "Recording process had to be force-killed. Video may be corrupted."
+  else
+    local filename
+    filename=$(cat "$RECORDING_FILE" 2>/dev/null)
+    echo "$filename"
+
+    local preview="${filename%.mp4}-preview.png"
+    ffmpeg -y -i "$filename" -ss 00:00:00.1 -vframes 1 -q:v 2 "$preview" -loglevel quiet 2>/dev/null
+
+    omarchy-notification-send "Screen recording saved" "Open with Super + Alt + , (or click this)" \
+      -t 10000 --image "${preview:-$filename}" \
+      --exec mpv -- "$filename"
+
+    # The shell caches the thumbnail on show, so it only has to outlive that load.
+    (
+      sleep 2
+      rm -f "$preview"
+    ) &
+  fi
+
+  rm -f "$RECORDING_FILE"
+}
+
+if screenrecording_active; then
+  stop_screenrecording
+elif [[ $STOP_RECORDING == "true" ]]; then
+  exit 1
+else
+  start_screenrecording
+fi

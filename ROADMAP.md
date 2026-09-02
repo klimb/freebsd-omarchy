@@ -192,12 +192,16 @@ FreeBSD port Makefile and bootstrap. Results:
 **Excluded — Linux-specific, no FreeBSD equivalent:**
 `bluez`/`bluetoothctl` (FreeBSD has own BT stack), `brightnessctl` (use
 `backlight(8)`), `inotify-tools` (use kqueue), `power-profiles-daemon` (systemd),
-`uwsm` (shimmed), `ufw`/`NetworkManager`, `gpu-screen-recorder` (V4L2/NVENC),
+`uwsm` (shimmed), `ufw`/`NetworkManager`, `gpu-screen-recorder` (V4L2/NVENC;
+screen recording is reimplemented video-only on `wf-recorder` via an override),
 `wireless-regdb`/`linux-firmware`.
 
 ---
 
 ## Already working (present via packages)
 `pactl`, `wpctl` (pipewire/wireplumber), `grim`, `slurp`, `gsettings`.
+Screen recording works **video-only** (top-bar indicator + menu + `Alt+PrintScr`)
+via a `wf-recorder` override of `omarchy-capture-screenrecording`; desktop/mic
+audio and the webcam overlay are not wired up yet.
 Partial (need the right package): `playerctl`, `hyprsunset`, `mise`, `satty`,
 `dconf`, `upower`.

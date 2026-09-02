@@ -59,8 +59,12 @@ RUN_DEPENDS+=	starship:shells/starship \
 		emacs:editors/emacs@wayland
 
 # Media + desktop utilities present in omarchy-base.packages, confirmed in ports.
+# wf-recorder (wlr-screencopy) + ffmpeg back the video-only screen recording
+# override that replaces the Linux-only gpu-screen-recorder.
 RUN_DEPENDS+=	convert:graphics/ImageMagick7 \
 		mpv:multimedia/mpv \
+		wf-recorder:multimedia/wf-recorder \
+		ffmpeg:multimedia/ffmpeg \
 		pamixer:audio/pamixer \
 		fastfetch:sysutils/fastfetch \
 		wtype:x11/wtype \
