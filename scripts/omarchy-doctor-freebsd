@@ -67,7 +67,7 @@ bluetooth|bluez|broken|not on FreeBSD
 audio|pactl|partial|provided by pipewire-pulse when installed
 audio|wpctl|partial|wireplumber CLI; present when wireplumber installed
 audio|playerctl|partial|MPRIS; needs audio/playerctl package
-display|brightnessctl|broken|use backlight(8) (intel) or acpi_video sysctls
+display|brightnessctl|shim|omarchy-brightness-display override uses backlight(8); keyboard/mute LED unsupported
 display|hyprsunset|partial|blue-light filter; present only if packaged
 display|plymouth|exclude|boot splash; no FreeBSD equivalent
 screensaver|ttfx|ok|py-terminaltexteffects (tte); ttfx shim + screensaver.txt marker patch

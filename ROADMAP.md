@@ -91,9 +91,28 @@ not BlueZ. Affected: `omarchy-bluetooth-device`, `omarchy-bluetooth-power`,
 `omarchy-restart-bluetooth`. Plan: evaluate a FreeBSD reimplementation
 (`service bluetooth`, `hccontrol` inquiry/pairing) or hide if impractical.
 
-### Display / power keys — **todo**
-`brightnessctl` (6) → `backlight(8)` (Intel) or `acpi_video` sysctls;
-`acpi` (6) → `acpiconf`/`sysctl` for battery + thermal.
+### Display / power keys — **wip**
+- **done** Display brightness keys (`XF86MonBrightness*`). FreeBSD override
+  `omarchy-brightness-display` drives the internal panel through `backlight(8)`
+  (`/dev/backlight/backlight0`, group `video`), which takes an absolute
+  percentage; `off`/`on` still map to Hyprland DPMS. Verified live on the laptop
+  (set/±5%/±1%/100%/min). Caveats: `backlight` only accepts integer percent, so
+  `±1%` precise steps may not move on panels with few raw levels, and `1%`
+  ("minimum") can map to raw 0 (fully off) on Intel panels. External DDC/Apple
+  displays are not handled (no `ddcutil` path); those key events adjust the
+  internal panel.
+- **done** Brightness key bindings. On some laptops (e.g. ThinkPads) the
+  brightness Fn keys emit `KEY_F5`/`KEY_F6` (xkb `F5`/`F6`), not
+  `XF86MonBrightness*`, so Omarchy's default binds never fire (verified with
+  `libinput debug-events`). Opt in with `OMARCHY_BRIGHTNESS_FN_KEYS=1`:
+  `omarchy-setup` then binds `F5`→down / `F6`→up in `~/.config/hypr/bindings.lua`
+  (a user-override file that survives clone updates). Off by default so hardware
+  with proper `XF86` keysyms isn't hijacked. Verified live: keys change the panel
+  and show the brightness OSD.
+- **todo** Keyboard backlight (`XF86KbdBrightness*`) — upstream reads
+  `/sys/class/leds/*kbd_backlight*`, absent on FreeBSD; the helper degrades to a
+  no-op ("no keyboard backlight device"). Same for the `micmute` LED.
+- **todo** `acpi` (6) → `acpiconf`/`sysctl` for battery + thermal.
 
 ### Security — **todo**
 `fprintd` (8) fingerprint — `libfprint` support on FreeBSD is limited; likely

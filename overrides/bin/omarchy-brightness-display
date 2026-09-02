@@ -1,0 +1,81 @@
+#!/usr/local/bin/bash
+
+# omarchy:summary=Show or adjust internal-panel brightness (FreeBSD: backlight(8)).
+# omarchy:args=[--no-osd] [--monitor name] [+N%|N%-|N%|off|on]
+# omarchy:examples=omarchy brightness display | omarchy brightness display +5% | omarchy brightness display 50%
+#
+# FreeBSD reimplementation of the brightnessctl-based upstream. The laptop panel
+# is driven through backlight(8) (/dev/backlight/backlight0, group video), which
+# takes an absolute percentage. off/on still map to Hyprland DPMS, exactly as
+# upstream. External DDC/Apple displays are not handled here (no ddcutil path on
+# FreeBSD); those key events simply adjust the internal panel.
+
+no_osd=0
+monitor=""
+
+while (( $# > 0 )); do
+  case "$1" in
+  --no-osd) no_osd=1; shift ;;
+  --monitor)
+    (( $# >= 2 )) || exit 1
+    monitor="$2"; shift 2 ;;
+  *) break ;;
+  esac
+done
+
+# Optional explicit device, e.g. OMARCHY_BACKLIGHT_DEVICE=/dev/backlight/backlight1.
+dev="${OMARCHY_BACKLIGHT_DEVICE:-}"
+bl() { if [[ -n $dev ]]; then backlight -f "$dev" "$@"; else backlight "$@"; fi; }
+
+# backlight with no value prints "brightness: NN"; extract NN.
+get() { bl 2>/dev/null | awk -F'[: ]+' '/brightness/ { print $2; found=1 } END { exit !found }'; }
+
+# No argument: report the current brightness percentage.
+if (( $# == 0 )); then
+  get
+  exit
+fi
+
+step="$1"
+
+# Blank/unblank the panel via DPMS (backlight cannot turn the display off).
+if [[ $step == "off" ]]; then
+  hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1
+  exit 0
+elif [[ $step == "on" ]]; then
+  # Skip a redundant enable when every active display is already lit; a spurious
+  # modeset right after resume flashes the panel at the unlock screen.
+  hyprctl monitors -j 2>/dev/null | jq -e '[.[] | select(.disabled == false)] | length > 0 and all(.dpmsStatus)' >/dev/null 2>&1 && exit 0
+  hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1
+  exit 0
+fi
+
+# Serialize overlapping key-repeat events so concurrent runs do not race.
+exec {lock_fd}>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display.lock"
+flock -n "$lock_fd" || exit 0
+
+current="$(get)" || exit 1
+
+# Translate the upstream relative/absolute step syntax into an absolute target.
+# Match upstream feel: 1% granularity at or below 5%, otherwise the given step.
+case "$step" in
++*%)
+  n="${step#+}"; n="${n%\%}"
+  (( current < 5 && n == 5 )) && n=1
+  (( target = current + n )) ;;
+*%-)
+  n="${step%\%-}"
+  (( current <= 5 && n == 5 )) && n=1
+  (( target = current - n )) ;;
+*%)
+  target="${step%\%}" ;;
+*)
+  target="$step" ;;
+esac
+
+(( target > 100 )) && target=100
+(( target < 1 )) && target=1
+
+bl "$target" >/dev/null 2>&1
+
+(( no_osd )) || omarchy-osd -i brightness -p "$(get)"
