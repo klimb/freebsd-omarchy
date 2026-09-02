@@ -575,9 +575,18 @@ fi
 # brightness binds never fire. Opt in with OMARCHY_BRIGHTNESS_FN_KEYS=1 to bind
 # F5 (down) and F6 (up) to omarchy-brightness-display. Off by default: on
 # hardware whose keys emit the proper XF86 keysyms this would needlessly hijack
-# F5/F6. bindings.lua is a user override loaded after the defaults, so this
-# survives clone updates.
-if [ "${OMARCHY_BRIGHTNESS_FN_KEYS:-0}" = 1 ] &&
+# F5/F6. The choice is persisted to a state file (like the editor/theme
+# defaults below) so it survives future re-runs: bindings.lua itself does NOT
+# survive re-runs -- the config-copy step above replaces it with a fresh
+# upstream copy every time, opt-in flag or not, so re-appending only on this
+# run's flag would silently lose the binding the next time omarchy-setup runs
+# for something unrelated.
+BRIGHTNESS_FN_STATE="$HOME/.local/state/omarchy/brightness-fn-keys"
+if [ "${OMARCHY_BRIGHTNESS_FN_KEYS:-0}" = 1 ]; then
+	mkdir -p "$(dirname "$BRIGHTNESS_FN_STATE")"
+	: > "$BRIGHTNESS_FN_STATE"
+fi
+if [ -f "$BRIGHTNESS_FN_STATE" ] &&
 	! grep -q 'FreeBSD brightness Fn keys' "$CONFIG_HOME/hypr/bindings.lua" 2>/dev/null; then
 	log "Binding F5/F6 to brightness in $CONFIG_HOME/hypr/bindings.lua"
 	cat >> "$CONFIG_HOME/hypr/bindings.lua" <<'LUA'
@@ -717,6 +726,32 @@ if [ -f "$NETPANEL" ] && ! grep -q 'networkManagerAvailable && info.type' "$NETP
     return "disconnected"|' \
 			-e 's|^    : -1$|    : (info.type === "wifi" \&\& info.signal_dbm !== undefined ? Math.max(0, Math.min(100, 2 * (parseInt(info.signal_dbm, 10) + 100))) : -1)|' \
 			"$NETPANEL"
+fi
+
+# The DNS provider row (DHCP/Cloudflare/Google/Custom) shells out to
+# omarchy-dns, which is 100% nmcli + systemd-resolved (NetworkManager conf.d
+# drop-ins, resolved.conf, pkexec) -- not worth reimplementing for FreeBSD
+# (DHCP-provided DNS is fine for virtually everyone). Hide the section instead
+# of leaving a switcher that silently does nothing. Column/Row exclude
+# invisible children from layout, so this doesn't leave a gap. Idempotent via
+# the marker comment; done post-reset so it survives updates.
+if [ -f "$NETPANEL" ] && ! grep -q 'omarchy-freebsd: DNS section hidden' "$NETPANEL"; then
+	log "Hiding the DNS provider section in the network panel (no NetworkManager)"
+	awk '
+		{ print }
+		/\/\/ DNS provider selection\./ { dns = 1 }
+		dns && !sep && /^[[:space:]]*PanelSeparator \{/ {
+			print "        visible: false  // omarchy-freebsd: DNS section hidden"
+			sep = 1
+			next
+		}
+		dns && sep && !col && /^[[:space:]]*Column \{/ {
+			print "        visible: false"
+			col = 1
+			dns = 0
+			next
+		}
+	' "$NETPANEL" > "$NETPANEL.omarchytmp.$$" && mv "$NETPANEL.omarchytmp.$$" "$NETPANEL"
 fi
 
 # 3f. Audio panel. The QuickShell audio panel is built entirely on
