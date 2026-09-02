@@ -221,6 +221,16 @@ write_shim nproc <<'SHIM'
 exec /sbin/sysctl -n hw.ncpu
 SHIM
 
+# awk: many omarchy-* helpers use GNU awk extensions (3-arg match(str, re, arr),
+# gensub, strtonum) that FreeBSD's base one-true-awk rejects with a syntax error
+# -- e.g. omarchy-menu-keybindings produces nothing. Route awk to gawk when it is
+# installed, falling back to base awk otherwise.
+write_shim awk <<'SHIM'
+#!/bin/sh
+if command -v gawk >/dev/null 2>&1; then exec gawk "$@"; fi
+exec /usr/bin/awk "$@"
+SHIM
+
 # ttfx: Omarchy's screensaver/effects renderer is the Arch `ttfx` package, which
 # is TerminalTextEffects renamed. FreeBSD ships it as py-terminaltexteffects (the
 # `tte` command) with identical flags, so pass straight through. If TTE is

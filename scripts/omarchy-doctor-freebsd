@@ -44,7 +44,7 @@ fi
 # Shims that omarchy-setup installs to ~/.local/bin. Commands listed here are
 # considered handled even though FreeBSD has no native binary.
 SHIMMED="uwsm uwsm-app setsid systemd-cat systemd-run systemd-inhibit systemctl \
-ttfx flock base64 stat md5sum nproc"
+ttfx flock base64 stat md5sum nproc awk"
 
 # Audit table: one row per command as "area|command|status|note".
 #   status: ok       FreeBSD has (or provides) a working equivalent
