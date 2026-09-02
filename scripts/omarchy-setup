@@ -258,19 +258,30 @@ sleep 86400
 SHIM
 
 # systemd-run: Arch schedules power actions in the user manager (e.g.
-# `systemd-run --user --on-active=2s systemctl reboot`). Strip the options,
-# honor --on-active=<n> as a sleep, and run the wrapped command detached so the
-# caller keeps going (matching the async intent).
+# `systemd-run --user --on-active=2s systemctl reboot`) and, more importantly,
+# omarchy-reminder's countdown notifications (--on-active=5m --unit=NAME).
+# Strip the options, convert --on-active's systemd duration (Ns/Nm/Nh, or a
+# bare number of seconds) to a sleep, and run the wrapped command detached so
+# the caller keeps going (matching the async intent -- real systemd-run also
+# returns immediately). When --unit is given, record the job in a small
+# registry ($XDG_RUNTIME_DIR/omarchy-timer-shim/<unit>.timer: "<next-epoch-us>
+# <pid>") so the systemctl shim's list-timers/stop can fake enough of the
+# systemd timer API for omarchy-reminder show/clear to work.
 write_shim systemd-run <<'SHIM'
 #!/bin/sh
-delay=0
+TIMER_DIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-timer-shim"
+delay=""
+unit=""
 while [ $# -gt 0 ]; do
 	case "$1" in
-		--on-active=*) delay=$(printf '%s' "${1#*=}" | tr -dc '0-9'); shift ;;
-		--on-active|--on-calendar|--unit|--description|--slice|--uid|--gid|\
+		--on-active=*) delay="${1#*=}"; shift ;;
+		--on-active) delay="$2"; shift 2 ;;
+		--unit=*) unit="${1#*=}"; shift ;;
+		--unit) unit="$2"; shift 2 ;;
+		--on-calendar|--description|--slice|--uid|--gid|\
 		--working-directory|-p|--property|--timer-property|--setenv|-E|-M|--machine)
 			shift 2 ;;
-		--property=*|--timer-property=*|--setenv=*|--unit=*|--description=*|\
+		--property=*|--timer-property=*|--setenv=*|--description=*|\
 		--slice=*|--working-directory=*) shift ;;
 		--user|--system|--scope|--collect|--quiet|--pipe|--wait|--no-ask-password|\
 		--no-block|--no-wall|-G|-r|--remain-after-exit) shift ;;
@@ -279,8 +290,23 @@ while [ $# -gt 0 ]; do
 		*) break ;;
 	esac
 done
-if [ "${delay:-0}" -gt 0 ] 2>/dev/null; then
-	( sleep "$delay"; exec "$@" ) &
+case "$delay" in
+	*h) seconds=$(( ${delay%h} * 3600 )) ;;
+	*m) seconds=$(( ${delay%m} * 60 )) ;;
+	*s) seconds="${delay%s}" ;;
+	*[0-9]) seconds="$delay" ;;
+	*) seconds=0 ;;
+esac
+if [ "${seconds:-0}" -gt 0 ] 2>/dev/null; then
+	if [ -n "$unit" ]; then
+		mkdir -p "$TIMER_DIR"
+		name="${unit%.timer}"; name="${name%.service}"
+		next=$(( ( $(date +%s) + seconds ) * 1000000 ))
+		( sleep "$seconds"; "$@"; rm -f "$TIMER_DIR/$name.timer" ) &
+		printf '%s %s\n' "$next" "$!" > "$TIMER_DIR/$name.timer"
+	else
+		( sleep "$seconds"; exec "$@" ) &
+	fi
 	exit 0
 fi
 exec "$@"
@@ -305,7 +331,9 @@ SHIM
 #   power     suspend->acpiconf -s3, hibernate->-s4, reboot/poweroff->shutdown(8)
 #   services  enable/disable->sysrc, start/stop/restart->service(8),
 #             is-enabled/is-active->boolean checks
-#   --user    session-manager ops have no equivalent -> succeed as a no-op
+#   timers    list-timers/stop read the registry the systemd-run shim writes
+#             (see write_shim systemd-run), so omarchy-reminder show/clear work
+#   --user    other session-manager ops have no equivalent -> succeed as a no-op
 # Root operations escalate via doas (the bootstrap adds nopass rules for the
 # power commands so the GUI power menu works without a terminal prompt).
 write_shim systemctl <<'SHIM'
@@ -316,18 +344,69 @@ priv() {
 	elif command -v sudo >/dev/null 2>&1; then sudo "$@"
 	else su root -c "$*"; fi
 }
+TIMER_DIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-timer-shim"
+list_timers() {
+	pattern="${1:-*}"
+	[ -d "$TIMER_DIR" ] || return 0
+	sep=""
+	for f in "$TIMER_DIR"/*.timer; do
+		[ -e "$f" ] || continue
+		name=$(basename "$f" .timer)
+		case "$name.timer" in $pattern) ;; *) continue ;; esac
+		next=$(cut -d' ' -f1 "$f" 2>/dev/null)
+		[ -n "$next" ] || continue
+		if [ "$output" = json ]; then
+			printf '%s{"unit":"%s.timer","next":%s}' "$sep" "$name" "$next"
+			sep=,
+		else
+			printf -- '- - - - %s.timer %s.service\n' "$name" "$name"
+		fi
+	done
+}
+stop_timer() {
+	name="${1%.timer}"; name="${name%.service}"
+	f="$TIMER_DIR/$name.timer"
+	[ -f "$f" ] || return 0
+	pid=$(cut -d' ' -f2 "$f" 2>/dev/null)
+	if [ -n "$pid" ]; then
+		# -9 on the subshell first: a plain TERM (or killing the sleep child
+		# first) lets its script resume past the interrupted `wait` and still
+		# fire the notification. Only then reap the now-orphaned sleep child
+		# (best-effort; a harmless stray sleep may survive the reparent race).
+		kill -9 "$pid" 2>/dev/null
+		pkill -P "$pid" 2>/dev/null
+	fi
+	rm -f "$f"
+}
+output=""
 user=0
+positional=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--user) user=1; shift ;;
+		--output=*) output="${1#*=}"; shift ;;
+		--output) output="$2"; shift 2 ;;
 		--system|--now|--no-wall|--no-ask-password|--quiet|-q|--no-block|\
-		--no-pager|--no-legend|--force|-f) shift ;;
+		--no-pager|--no-legend|--force|-f|--all|--) shift ;;
 		-*) shift ;;
-		*) break ;;
+		*) positional="$positional $1"; shift ;;
 	esac
 done
-[ "$user" -eq 1 ] && exit 0
+set -- $positional
 verb="${1:-}"; [ $# -gt 0 ] && shift
+case "$verb" in
+	list-timers)
+		[ "$output" = json ] && printf '['
+		list_timers "${1:-*}"
+		[ "$output" = json ] && printf ']\n'
+		exit 0 ;;
+	stop)
+		if [ "$user" -eq 1 ]; then
+			for u in "$@"; do stop_timer "$u"; done
+			exit 0
+		fi ;;
+esac
+[ "$user" -eq 1 ] && [ "$verb" != "stop" ] && exit 0
 unit="${1:-}"; unit="${unit%.service}"
 case "$verb" in
 	suspend)        priv acpiconf -s3; exit $? ;;
@@ -354,9 +433,85 @@ case "$verb" in
 esac
 SHIM
 
-# On Arch, systemd user units socket-activate PipeWire and the portals. FreeBSD
-# has none, so start them from Hyprland's autostart. This overwrites the user
-# override file (loaded after Omarchy defaults, where `o` is already defined).
+# busctl: systemd-only; no D-Bus CLI on FreeBSD. Omarchy's every desktop toast
+# (reminders, battery/weather/time notices, recording-saved, ...) funnels
+# through omarchy-notification-send, whose only busctl use is one shape: a
+# `call org.freedesktop.Notifications ... Notify susssasa{sv}i ...`. Translate
+# that one call to `gdbus call` (glib2, already pulled in by gnome-keyring) so
+# omarchy-shell's notification server actually receives it. Anything else is
+# unsupported (fails loudly rather than silently no-op'ing).
+write_shim busctl <<'SHIM'
+#!/bin/sh
+while [ "${1:-}" = "--user" ] || [ "${1:-}" = "--system" ] || [ "${1:-}" = "--" ]; do
+	shift
+done
+if [ "${1:-}" != call ]; then
+	echo "busctl shim: unsupported command: ${1:-}" >&2
+	exit 1
+fi
+shift
+service="$1"; method="$4"
+shift 5
+
+if [ "$service" != org.freedesktop.Notifications ] || [ "$method" != Notify ]; then
+	echo "busctl shim: unsupported call: $service $method" >&2
+	exit 1
+fi
+
+# Escape a value as a single-quoted GVariant string literal.
+gv_str() {
+	esc=$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g")
+	printf "'%s'" "$esc"
+}
+
+app_name=$(gv_str "$1"); replaces_id="$2"; app_icon=$(gv_str "$3")
+headline=$(gv_str "$4"); body=$(gv_str "$5")
+shift 5
+
+nactions="$1"; shift
+i=0; while [ "$i" -lt "$nactions" ]; do shift; i=$((i + 1)); done
+
+nhints="$1"; shift
+hints="{"
+sep=""
+i=0
+while [ "$i" -lt "$nhints" ]; do
+	key="$1"; type="$2"; val="$3"; shift 3
+	case "$type" in
+		y) gv="byte $val" ;;
+		*) gv=$(gv_str "$val") ;;
+	esac
+	hints="${hints}${sep}$(gv_str "$key"): <$gv>"
+	sep=", "
+	i=$((i + 1))
+done
+hints="${hints}}"
+expire="$1"
+
+# The trailing "--" stops gdbus's own option parser from treating a
+# negative expire_timeout (e.g. "-1", the default/no-expiry value) as an
+# unrecognized flag -- without it gdbus rejects the call and prints --help.
+out=$(gdbus call --session \
+	--dest org.freedesktop.Notifications \
+	--object-path /org/freedesktop/Notifications \
+	--method org.freedesktop.Notifications.Notify \
+	-- "$app_name" "$replaces_id" "$app_icon" "$headline" "$body" "[]" "$hints" "$expire") || exit $?
+# gdbus prints e.g. "(uint32 42,)"; busctl's callers expect "u 42". Match
+# specifically on the "uint32 " marker -- a bare digit scan would instead grab
+# the "32" out of "uint32" itself.
+id=$(printf '%s' "$out" | sed -n 's/.*uint32 \([0-9][0-9]*\).*/\1/p')
+printf 'u %s\n' "$id"
+SHIM
+
+# date: omarchy-reminder computes fire times with GNU `date -d "+Nm"` / `-d
+# "@epoch"`; FreeBSD base date has no -d at all. Route to GNU date (`gdate`,
+# from sysutils/coreutils) when installed, else fall back to base date (only
+# plain `date +FORMAT` calls will work without -d).
+write_shim date <<'SHIM'
+#!/bin/sh
+if command -v gdate >/dev/null 2>&1; then exec gdate "$@"; fi
+exec /bin/date "$@"
+SHIM
 log "Writing FreeBSD session autostart to $CONFIG_HOME/hypr/autostart.lua"
 mkdir -p "$CONFIG_HOME/hypr"
 cat > "$CONFIG_HOME/hypr/autostart.lua" <<'LUA'
@@ -645,6 +800,25 @@ if command -v nautilus >/dev/null 2>&1 && ! grep -q '^inode/directory=' "$MIMEAP
 		} > "$MIMEAPPS.omarchytmp.$$"
 		mv "$MIMEAPPS.omarchytmp.$$" "$MIMEAPPS"
 	fi
+fi
+
+# 3i. Bar reminder indicator: upstream's onPressed only opens the "set a
+# reminder" overlay when there are zero active reminders; with one already
+# pending, clicking the bar icon just re-shows the existing list, with no way
+# to add another (mouse users are stuck, though SUPER+CTRL+R still works).
+# Make the click always open the set-reminder flow; the tooltip (on hover)
+# and SUPER+CTRL+ALT+R still cover "show existing reminders". Post-reset so it
+# survives updates; idempotent.
+REMINDERIND="$OMARCHY_SRC/shell/plugins/bar/indicators/Reminder.qml"
+if [ -f "$REMINDERIND" ] && grep -q 'reminderCount > 0.*execDetached.*"show"' "$REMINDERIND"; then
+	sed -i '' -e '/if (root.reminderCount > 0) Quickshell.execDetached(\["omarchy-reminder", "show"\])/d' \
+		-e 's/else root.openReminderFlow()/root.openReminderFlow()/' \
+		"$REMINDERIND" 2>/dev/null || {
+		sed -i -e '/if (root.reminderCount > 0) Quickshell.execDetached(\["omarchy-reminder", "show"\])/d' \
+			-e 's/else root.openReminderFlow()/root.openReminderFlow()/' \
+			"$REMINDERIND"
+	}
+	log "Bar reminder icon now always opens the set-reminder flow"
 fi
 
 # Rebrand the presentation banner (omarchy-show-logo cats $OMARCHY_PATH/logo.txt)

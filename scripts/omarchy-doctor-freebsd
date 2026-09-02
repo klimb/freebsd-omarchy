@@ -44,7 +44,7 @@ fi
 # Shims that omarchy-setup installs to ~/.local/bin. Commands listed here are
 # considered handled even though FreeBSD has no native binary.
 SHIMMED="uwsm uwsm-app setsid systemd-cat systemd-run systemd-inhibit systemctl \
-ttfx flock base64 stat md5sum nproc awk lua"
+ttfx flock base64 stat md5sum nproc awk lua busctl date"
 
 # Audit table: one row per command as "area|command|status|note".
 #   status: ok       FreeBSD has (or provides) a working equivalent
@@ -91,6 +91,8 @@ misc|gsettings|partial|GNOME settings; needs glib schemas installed
 misc|dconf|partial|GNOME settings backend; optional
 misc|upower|partial|sysutils/upower may be packaged
 misc|acpi|broken|use acpiconf/sysctl for battery/thermal
+notifications|busctl|shim|no systemd D-Bus CLI; shim translates the one Notify call omarchy-notification-send makes to gdbus (glib2)
+notifications|date|shim|omarchy-reminder uses GNU date -d; shim routes to gdate (sysutils/coreutils)
 "
 
 # Count helper files under $OMARCHY_PATH that reference a command as a word.

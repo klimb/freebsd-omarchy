@@ -58,7 +58,8 @@ RUN_DEPENDS+=	starship:shells/starship \
 		btop:sysutils/btop \
 		zoxide:sysutils/zoxide \
 		nvim:editors/neovim \
-		emacs:editors/emacs@wayland
+		emacs:editors/emacs@wayland \
+		gdate:sysutils/coreutils
 
 # Media + desktop utilities present in omarchy-base.packages, confirmed in ports.
 # wf-recorder (wlr-screencopy) + ffmpeg back the video-only screen recording
