@@ -499,6 +499,46 @@ if [ -f "$NETPANEL" ] && ! grep -q 'networkManagerAvailable && info.type' "$NETP
 			"$NETPANEL"
 fi
 
+# 3f. Audio panel. The QuickShell audio panel is built entirely on
+# Quickshell.Services.Pipewire, which exposes no sink on FreeBSD (there is no
+# PipeWire<->OSS bridge), so the output slider was disabled and the hero read
+# "Silenced" even though the volume keys worked via mixer(8). Patch the panel to
+# fall back to the OSS master -- reading state with `omarchy-audio-output-volume
+# status` and writing through its absolute-set / mute-toggle -- whenever there is
+# no PipeWire sink. Done after the reset so it survives updates; idempotent.
+AUDIOPANEL="$OMARCHY_SRC/shell/plugins/panels/audio/Panel.qml"
+if [ -f "$AUDIOPANEL" ] && ! grep -q 'ossFallback' "$AUDIOPANEL"; then
+	log "Patching audio panel for FreeBSD OSS fallback (no PipeWire sink)"
+	awkprog="$(mktemp 2>/dev/null || echo /tmp/omarchy-audio-panel.$$.awk)"
+	cat > "$awkprog" <<'AWK'
+/readonly property bool ossFallback:/ { seen = 1 }
+{
+  line = $0
+  sub(/volumeSink\.audio\.volume : 0$/, "volumeSink.audio.volume : ossVolume", line)
+  m = sub(/volumeSink\.audio\.muted : false$/, "volumeSink.audio.muted : ossMuted", line)
+  sub(/readonly property bool hasOutput: !!\(volumeSink && volumeSink\.audio\)$/, "readonly property bool hasOutput: !!(volumeSink \\&\\& volumeSink.audio) || root.ossFallback", line)
+  sub(/if \(!volumeSink \|\| !volumeSink\.audio\) return outputVolume$/, "if (!volumeSink || !volumeSink.audio) { var vv = Math.max(0, Math.min(1, v)); Quickshell.execDetached([\"omarchy-audio-output-volume\", String(Math.round(vv * 100))]); ossVolume = vv; ossMuted = false; return vv }", line)
+  sub(/if \(volumeSink && volumeSink\.audio\) volumeSink\.audio\.muted = !volumeSink\.audio\.muted$/, "if (volumeSink \\&\\& volumeSink.audio) volumeSink.audio.muted = !volumeSink.audio.muted; else { ossMuted = !ossMuted; Quickshell.execDetached([\"omarchy-audio-output-volume\", \"mute-toggle\"]) }", line)
+  sub(/if \(hasOutput\) volumeSink\.audio\.muted = mute$/, "if (hasOutput \\&\\& volumeSink \\&\\& volumeSink.audio) volumeSink.audio.muted = mute; else if (root.ossFallback) { ossMuted = !ossMuted; Quickshell.execDetached([\"omarchy-audio-output-volume\", \"mute-toggle\"]) }", line)
+  sub(/enabled: !!root\.sink$/, "enabled: !!root.sink || root.ossFallback", line)
+  print line
+  if (m && !seen) {
+    print "  // FreeBSD: PipeWire exposes no sink, so back the output slider/mute with the OSS master via mixer(8)."
+    print "  property real ossVolume: 0"
+    print "  property bool ossMuted: false"
+    print "  readonly property bool ossFallback: !volumeSink || !volumeSink.audio"
+    print "  Process { id: ossReadProc; command: [\"omarchy-audio-output-volume\", \"status\"]; stdout: StdioCollector { waitForEnd: true; onStreamFinished: { var pp = String(text).trim().split(\" \"); root.ossVolume = parseFloat(pp[0]) || 0; root.ossMuted = (pp[1] === \"on\") } } }"
+    print "  Timer { interval: 500; running: root.opened && root.ossFallback; repeat: true; triggeredOnStart: true; onTriggered: ossReadProc.running = true }"
+  }
+}
+AWK
+	tmp="$AUDIOPANEL.omarchytmp.$$"
+	if awk -f "$awkprog" "$AUDIOPANEL" > "$tmp" && [ -s "$tmp" ]; then
+		cat "$tmp" > "$AUDIOPANEL"
+	fi
+	rm -f "$tmp" "$awkprog"
+fi
+
 # Rebrand the presentation banner (omarchy-show-logo cats $OMARCHY_PATH/logo.txt)
 # to "FreeBSD". Omarchy's own FIGlet font is uppercase-only, so use figlet's
 # `big` font to keep the FreeBSD casing. Skip if figlet is unavailable.

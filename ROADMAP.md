@@ -127,6 +127,14 @@ needed (unlike the brightness keys). Mute key (`XF86AudioMute`) routes to the
 same override's `mute-toggle`. App audio through PipeWire is a separate,
 unsolved item (no PipeWire↔OSS sink bridge yet).
 
+The bar's audio panel (`shell/plugins/panels/audio/Panel.qml`) is built entirely
+on `Quickshell.Services.Pipewire`, so with no sink it showed "Silenced" with a
+dead slider. `omarchy-setup` patches it (post-reset awk, update-safe) to fall
+back to the OSS master when there's no PipeWire sink: it reads state via
+`omarchy-audio-output-volume status` (polled) and writes through the override's
+absolute-set / `mute-toggle`, and enables the slider. Verified live (label,
+drag, mute).
+
 ### Cursor — **done**
 Omarchy sets only the cursor *size*; on Arch a system default cursor theme
 exists, but FreeBSD has none, so Hyprland shows its built-in teardrop cursor.

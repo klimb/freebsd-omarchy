@@ -21,6 +21,11 @@ read_vol() {
     awk 'NR==1 { printf "%d", $1 * 100 + 0.5 }'
 }
 
+# Current volume as the raw 0.00-1.00 fraction (first channel).
+read_frac() {
+  mixer "$dev.volume" 2>/dev/null | sed -n 's/.*=\([0-9.][0-9.]*\).*/\1/p' | awk 'NR==1 { print $1 }'
+}
+
 is_muted() { [[ "$(mixer "$dev.mute" 2>/dev/null)" == *=on ]]; }
 
 set_vol() {
@@ -32,6 +37,11 @@ set_vol() {
 }
 
 case "$action" in
+status)
+  # Machine-readable state for the QuickShell audio panel: "<frac> <on|off>".
+  printf '%s %s\n' "$(read_frac)" "$(is_muted && echo on || echo off)"
+  exit 0
+  ;;
 mute-toggle)
   mixer "$dev.mute=toggle" >/dev/null 2>&1
   if is_muted; then
@@ -46,8 +56,14 @@ lower) delta="-5" ;;
 *)
   if [[ $action =~ ^[+-][0-9]+$ ]]; then
     delta="$action"
+  elif [[ $action =~ ^[0-9]+$ ]]; then
+    # Bare integer: set an absolute percentage without an OSD (the audio panel
+    # slider provides its own UI, so it drives volume through this path).
+    mixer "$dev.mute=off" >/dev/null 2>&1
+    set_vol "$action"
+    exit 0
   else
-    echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N>" >&2
+    echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|status|+N|-N|N>" >&2
     exit 1
   fi
   ;;
