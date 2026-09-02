@@ -915,8 +915,13 @@ cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
   },
 
   // Package install/remove use pacman/yay; repoint at pkg. Hide AUR (no
-  // FreeBSD equivalent) by making its visibility guard always fail.
+  // FreeBSD equivalent) by making its visibility guard always fail. Reuse the
+  // beastie icon from "Update > FreeBSD" so the two FreeBSD-native pkg
+  // entries read consistently instead of pacman's Arch-flavored glyph.
   "install.package": {
+    "icon": "",
+    "iconFont": "",
+    "label": "Package",
     "action": "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install-freebsd"
   },
   "install.aur": { "when": "false" },
