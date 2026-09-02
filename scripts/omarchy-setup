@@ -231,6 +231,18 @@ if command -v gawk >/dev/null 2>&1; then exec gawk "$@"; fi
 exec /usr/bin/awk "$@"
 SHIM
 
+# lua: some helpers (omarchy-menu-keybindings) invoke `lua` to parse the Lua
+# Hyprland config. FreeBSD installs versioned binaries (lua54, ...), not an
+# unversioned `lua`, so bridge to the newest available interpreter.
+write_shim lua <<'SHIM'
+#!/bin/sh
+for l in lua54 lua55 lua53 lua51; do
+	if command -v "$l" >/dev/null 2>&1; then exec "$l" "$@"; fi
+done
+echo "lua: no lua5x interpreter found" >&2
+exit 127
+SHIM
+
 # ttfx: Omarchy's screensaver/effects renderer is the Arch `ttfx` package, which
 # is TerminalTextEffects renamed. FreeBSD ships it as py-terminaltexteffects (the
 # `tte` command) with identical flags, so pass straight through. If TTE is
