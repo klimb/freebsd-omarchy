@@ -526,6 +526,21 @@ o.exec_on_start("wireplumber")
 o.exec_on_start("pgrep -x xdg-desktop-portal-hyprland >/dev/null 2>&1 || " ..
 	"/usr/local/libexec/xdg-desktop-portal-hyprland")
 
+-- One-time: add the Tailscale bar widget (left of Wi-Fi). Unlike `omarchy bar
+-- put`, `omarchy plugin enable` does NOT retry if omarchy-shell (quickshell)
+-- isn't listening on its IPC socket yet, so it can lose the race against the
+-- shell's own startup at session launch; retry it ourselves for up to a
+-- minute. Guarded by a marker file so it only runs (and touches the marker)
+-- once it actually succeeds.
+o.exec_on_start(
+	"m=\"$HOME/.local/state/omarchy/tailscale-bar-enabled\"; " ..
+	"l=\"$HOME/.local/state/omarchy/tailscale-bar-enable.log\"; " ..
+	"[ -f \"$m\" ] || (mkdir -p \"$(dirname \"$m\")\"; i=0; " ..
+	"while [ \"$i\" -lt 60 ]; do " ..
+	"omarchy plugin enable omarchy.tailscale --before omarchy.network >\"$l\" 2>&1 " ..
+	"&& { touch \"$m\"; break; }; i=$((i+1)); sleep 1; done) &"
+)
+
 -- Add your own session apps here, e.g.:
 -- o.launch_on_start("my-service")
 LUA

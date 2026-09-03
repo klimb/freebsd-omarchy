@@ -28,8 +28,17 @@ step "Enabling tailscaled"
 sysrc tailscaled_enable=YES
 service tailscaled status >/dev/null 2>&1 || service tailscaled start
 
-step "Bringing Tailscale up"
-tailscale up "$@"
+# Skip `tailscale up` when already connected and no explicit flags were
+# passed, so re-running this (e.g. from the menu, or indirectly via a
+# provisioning re-run) never re-triggers the browser auth flow on an
+# already-authenticated node.
+backend_state=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // empty')
+if [ "$backend_state" = "Running" ] && [ "$#" -eq 0 ]; then
+	step "Already connected; skipping 'tailscale up' (would not prompt, but no need to run it)"
+else
+	step "Bringing Tailscale up"
+	tailscale up "$@"
+fi
 
 step "Status"
 tailscale status
