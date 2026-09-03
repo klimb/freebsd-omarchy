@@ -903,6 +903,25 @@ if [ ! -f "$CONFIG_HOME/omarchy/branding/screensaver.txt" ] && [ -f "$OMARCHY_SR
 	cp "$OMARCHY_SRC/logo.txt" "$CONFIG_HOME/omarchy/branding/screensaver.txt"
 fi
 
+# 4c. About screen branding + fastfetch config. omarchy-launch-about runs plain
+# `fastfetch`; without a config it falls back to fastfetch's own bundled
+# per-OS logo, which for FreeBSD is an abstract swirl, not the familiar
+# Beastie daemon. Install the upstream fastfetch layout (from the clone, so
+# its module list/hardware panel stays in sync with Omarchy) at the
+# highest-priority per-user config path fastfetch searches, and point its
+# logo at the real Beastie: FreeBSD's own loader boot-splash art
+# (/boot/lua/gfx-beastie.lua), rendered via lua54 (already a dependency) so
+# its \027[..m color escapes are decoded correctly instead of hand-copied.
+mkdir -p "$CONFIG_HOME/fastfetch" "$CONFIG_HOME/omarchy/branding"
+if [ -f "$OMARCHY_SRC/etc/fastfetch/config.jsonc" ]; then
+	cp "$OMARCHY_SRC/etc/fastfetch/config.jsonc" "$CONFIG_HOME/fastfetch/config.jsonc"
+fi
+BEASTIE_LUA=/boot/lua/gfx-beastie.lua
+if [ -f "$BEASTIE_LUA" ] && command -v lua54 >/dev/null 2>&1; then
+	lua54 -e "for _,l in ipairs(dofile('$BEASTIE_LUA').logo.graphic) do print(l) end" \
+		> "$CONFIG_HOME/omarchy/branding/about.txt"
+fi
+
 # 5. Set a default theme. Omarchy config files include
 # ~/.local/state/omarchy/current/theme/{foot.ini,alacritty.toml,...}; that
 # "current" tree is created by omarchy-theme-set, which upstream runs from a
