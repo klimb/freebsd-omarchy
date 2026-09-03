@@ -1116,19 +1116,23 @@ cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
   "install.gaming.geforce-now": { "when": "false" },
   "install.gaming.xbox-controllers": { "when": "false" },
 
-  // Install > Service: Signal and Tailscale have real FreeBSD ports and are
-  // repointed via overrides/bin/omarchy-install-service-{signal,tailscale}
-  // (both disabled-checks already match the FreeBSD pkg names, no jsonc
-  // change needed there). 1Password, Dropbox, Spotify, NordVPN, ONCE, and
-  // Bitwarden are all proprietary Linux-only binaries with no FreeBSD port
-  // (verified via pkg search); hide them. Chromium Account needs no change
-  // (just edits chromium-flags.conf, no package dependency).
+  // Install > Service is hidden entirely (parent + every child): Tailscale
+  // is covered by Setup > Network > Tailscale; Signal has a real FreeBSD
+  // port but isn't worth a whole submenu on its own; 1Password, Dropbox,
+  // Spotify, NordVPN, ONCE, and Bitwarden are all proprietary Linux-only
+  // binaries with no FreeBSD port (verified via pkg search); Chromium
+  // Account is the only other child (portable, no package dependency) but
+  // hidden along with the rest of the section per user request.
+  "install.service": { "when": "false" },
   "install.service.1password": { "when": "false" },
   "install.service.dropbox": { "when": "false" },
   "install.service.spotify": { "when": "false" },
   "install.service.nordvpn": { "when": "false" },
   "install.service.once": { "when": "false" },
   "install.service.bitwarden": { "when": "false" },
+  "install.service.tailscale": { "when": "false" },
+  "install.service.signal": { "when": "false" },
+  "install.service.chromium-account": { "when": "false" },
 
   // Install > Development: everything here runs through mise (packaged for
   // FreeBSD) or a language's own cross-platform installer (rustup, opam), so
