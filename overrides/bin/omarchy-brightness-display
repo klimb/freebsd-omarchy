@@ -57,15 +57,17 @@ flock -n "$lock_fd" || exit 0
 current="$(get)" || exit 1
 
 # Translate the upstream relative/absolute step syntax into an absolute target.
-# Match upstream feel: 1% granularity at or below 5%, otherwise the given step.
+# backlight(8) on this Intel i915 KMS panel rounds percentages down by ~1 point,
+# and 1%-scale steps often round away to nothing (repeated `backlight incr 1`
+# stays put) -- upstream's fine-grained "1% below 5%" step gets silently eaten
+# near the bottom, making brighten look broken while dim (bigger steps) still
+# visibly works. Always apply the full requested step instead.
 case "$step" in
 +*%)
   n="${step#+}"; n="${n%\%}"
-  (( current < 5 && n == 5 )) && n=1
   (( target = current + n )) ;;
 *%-)
   n="${step%\%-}"
-  (( current <= 5 && n == 5 )) && n=1
   (( target = current - n )) ;;
 *%)
   target="${step%\%}" ;;

@@ -93,8 +93,16 @@ start_screenrecording() {
   filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
 
   echo "===== $(date '+%F %T') args: $SCRIPT_ARGS target: $target =====" >>"$LOG_FILE"
+  # -D/--no-damage: this port's screencopy damage-tracking doesn't reliably fire, which
+  # otherwise leaves wf-recorder stuck re-emitting the first captured frame for the whole
+  # recording (correct duration, frozen picture). Forces continuous capture instead.
+  # -p threads=4: wf-recorder's default tune=zerolatency forces slice-based threading, so
+  # on many-core CPUs x264 emits one slice per thread (e.g. 20). Hardware VAAPI decoders
+  # (what most players use for playback) choke on heavily-sliced streams after the first
+  # keyframe, which looks identical to "video stuck on frame 1". Capping threads keeps the
+  # slice count within what hardware decoders reliably support.
   # exec -a renames the process so the bar's pgrep guard matches it.
-  (exec -a "$RECORDER_TAG" wf-recorder "${capture_args[@]}" -f "$filename") >>"$LOG_FILE" 2>&1 &
+  (exec -a "$RECORDER_TAG" wf-recorder -D -p threads=4 "${capture_args[@]}" -f "$filename") >>"$LOG_FILE" 2>&1 &
   local pid=$!
 
   local waited=0
