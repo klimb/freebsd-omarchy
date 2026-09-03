@@ -10,23 +10,21 @@
 #
 # Environment overrides:
 #   OMARCHY_BRANCH  Omarchy branch (default: quattro)
-#   SUDO            privilege escalation command (default: autodetected)
 
 set -eu
 
 OMARCHY_BRANCH="${OMARCHY_BRANCH:-quattro}"
 
-# Pick a privilege escalation tool for the root-only steps. Only doas is
-# supported (this script installs+configures it below for later runs); sudo is
-# not used anywhere in this repo.
-if [ "$(id -u)" -eq 0 ]; then
-	SUDO="${SUDO:-}"
-elif command -v doas >/dev/null 2>&1; then
-	SUDO="${SUDO:-doas}"
-else
+# Only doas is supported for the root-only steps (this script installs+
+# configures it below for later runs); sudo is not used anywhere in this repo.
+if [ "$(id -u)" -ne 0 ] && ! command -v doas >/dev/null 2>&1; then
 	echo "error: need root or doas to install packages" >&2
 	exit 1
 fi
+priv() {
+	if [ "$(id -u)" -eq 0 ]; then "$@"
+	else doas "$@"; fi
+}
 
 USER_NAME="$(id -un)"
 
@@ -39,8 +37,8 @@ log() { printf '==> %s\n' "$*"; }
 # Edit the base config in place, then force-refresh the repo catalogue.
 if [ -f /etc/pkg/FreeBSD.conf ] && grep -q 'quarterly' /etc/pkg/FreeBSD.conf; then
 	log "Switching pkg repo from 'quarterly' to 'latest'"
-	$SUDO sed -i '' -e 's|quarterly|latest|g' /etc/pkg/FreeBSD.conf
-	$SUDO pkg update -f
+	priv sed -i '' -e 's|quarterly|latest|g' /etc/pkg/FreeBSD.conf
+	priv pkg update -f
 fi
 
 # 1. System packages. Origins map to the pkg names FreeBSD ships.
@@ -54,19 +52,20 @@ fi
 # (the shell `open` function, e.g. `open .`); coreutils provides GNU `gdate`,
 # which omarchy-reminder needs for `date -d` (FreeBSD base date has no -d).
 # ffmpegthumbnailer gives nautilus video (mp4/webm/...) thumbnail previews.
+# tailscale backs the Setup > Network > Tailscale menu entry (mesh VPN).
 PKGS="hyprland seatd bash foot alacritty pipewire wireplumber wl-clipboard grim slurp \
 hyprpicker xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec xdg-utils socat \
 starship zoxide fzf bat eza fd-find ripgrep jq btop lazygit tmux neovim imv git vips figlet gawk lua54 coreutils \
 noto-basic nerd-fonts font-awesome dbus py312-terminaltexteffects cmatrix \
-ImageMagick7 mpv wf-recorder ffmpeg pamixer fastfetch wtype unzip libqrencode gnome-keyring bash-completion chromium emacs-wayland hyprlock nautilus ffmpegthumbnailer"
+ImageMagick7 mpv wf-recorder ffmpeg pamixer fastfetch wtype unzip libqrencode gnome-keyring bash-completion chromium emacs-wayland hyprlock nautilus ffmpegthumbnailer tailscale"
 
 log "Installing packages"
-$SUDO pkg install -y $PKGS
+priv pkg install -y $PKGS
 
 # QuickShell (Omarchy top bar) may not be packaged; try, but do not fail.
-if ! $SUDO pkg install -y quickshell 2>/dev/null; then
+if ! priv pkg install -y quickshell 2>/dev/null; then
 	log "quickshell package not available; install waybar as a fallback"
-	$SUDO pkg install -y waybar || true
+	priv pkg install -y waybar || true
 fi
 
 # 2. GPU/DRM kernel module. Wayland compositors (Hyprland/Aquamarine) need a
@@ -74,7 +73,7 @@ fi
 # loaded. FreeBSD ships these out-of-tree in drm-kmod; pick the module for the
 # installed GPU and load it now + at boot.
 log "Installing DRM kernel module (drm-kmod)"
-$SUDO pkg install -y drm-kmod
+priv pkg install -y drm-kmod
 gpuinfo="$(pciconf -lv 2>/dev/null | grep -iA4 'class=0x0300' || true)"
 if printf '%s' "$gpuinfo" | grep -qi intel; then
 	KMS=i915kms
@@ -85,24 +84,24 @@ else
 fi
 if [ -n "$KMS" ]; then
 	log "Enabling $KMS at boot and loading it now"
-	$SUDO sysrc kld_list+="$KMS"
-	$SUDO kldload "$KMS" 2>/dev/null || true
+	priv sysrc kld_list+="$KMS"
+	priv kldload "$KMS" 2>/dev/null || true
 else
 	log "No Intel/AMD GPU detected; set kld_list manually for your GPU (see: pkg info -D drm-kmod)"
 fi
 
 # 3. Minimal services.
 log "Enabling seatd and dbus"
-$SUDO sysrc seatd_enable=YES
-$SUDO sysrc dbus_enable=YES
-$SUDO service seatd start || true
-$SUDO service dbus start || true
+priv sysrc seatd_enable=YES
+priv sysrc dbus_enable=YES
+priv service seatd start || true
+priv service dbus start || true
 
 # 4. Group membership. FreeBSD seatd grants access via the `video` group
 # (it owns /var/run/seatd.sock); `video` also gates GPU/DRM access. There is
 # no `seat` group on FreeBSD (that is a systemd-logind concept).
 log "Adding $USER_NAME to the video group (seatd + GPU access)"
-$SUDO pw groupmod video -m "$USER_NAME"
+priv pw groupmod video -m "$USER_NAME"
 
 # 5. Privilege escalation. The "Update > FreeBSD" menu entry
 # (omarchy-update-freebsd) and everyday admin use doas; install it and grant the
@@ -110,11 +109,11 @@ $SUDO pw groupmod video -m "$USER_NAME"
 # Skipped when installing as root (there is no unprivileged user to grant).
 if [ "$USER_NAME" != "root" ]; then
 	log "Installing and configuring doas for $USER_NAME"
-	$SUDO pkg install -y doas
+	priv pkg install -y doas
 	DOAS_CONF=/usr/local/etc/doas.conf
 	DOAS_RULE="permit persist $USER_NAME as root"
 	if ! { [ -f "$DOAS_CONF" ] && grep -qF "$DOAS_RULE" "$DOAS_CONF"; }; then
-		printf '%s\n' "$DOAS_RULE" | $SUDO tee -a "$DOAS_CONF" >/dev/null
+		printf '%s\n' "$DOAS_RULE" | priv tee -a "$DOAS_CONF" >/dev/null
 	fi
 	# The GUI power menu (suspend/reboot/shutdown) runs with no controlling
 	# terminal, so a password prompt cannot be answered. Grant passwordless doas
@@ -124,20 +123,20 @@ if [ "$USER_NAME" != "root" ]; then
 	for pc in "shutdown" "acpiconf"; do
 		NP_RULE="permit nopass $USER_NAME as root cmd $pc"
 		if ! { [ -f "$DOAS_CONF" ] && grep -qF "$NP_RULE" "$DOAS_CONF"; }; then
-			printf '%s\n' "$NP_RULE" | $SUDO tee -a "$DOAS_CONF" >/dev/null
+			printf '%s\n' "$NP_RULE" | priv tee -a "$DOAS_CONF" >/dev/null
 		fi
 	done
-	$SUDO chown root:wheel "$DOAS_CONF"
-	$SUDO chmod 0644 "$DOAS_CONF"
+	priv chown root:wheel "$DOAS_CONF"
+	priv chmod 0644 "$DOAS_CONF"
 	# The security/doas package ships no PAM policy; without it PAM hits the
 	# default-deny "other" rule and every auth fails. Point doas at the system
 	# password stack so it authenticates against the user's own password.
 	DOAS_PAM=/usr/local/etc/pam.d/doas
 	if [ ! -f "$DOAS_PAM" ]; then
 		printf 'auth\t\tinclude\t\tsystem\naccount\t\tinclude\t\tsystem\nsession\t\tinclude\t\tsystem\npassword\tinclude\t\tsystem\n' |
-			$SUDO tee "$DOAS_PAM" >/dev/null
-		$SUDO chown root:wheel "$DOAS_PAM"
-		$SUDO chmod 0644 "$DOAS_PAM"
+			priv tee "$DOAS_PAM" >/dev/null
+		priv chown root:wheel "$DOAS_PAM"
+		priv chmod 0644 "$DOAS_PAM"
 	fi
 fi
 
@@ -147,10 +146,10 @@ fi
 if [ "$USER_NAME" != "root" ] && command -v bash >/dev/null 2>&1; then
 	BASH_BIN="$(command -v bash)"
 	grep -qxF "$BASH_BIN" /etc/shells 2>/dev/null ||
-		printf '%s\n' "$BASH_BIN" | $SUDO tee -a /etc/shells >/dev/null
+		printf '%s\n' "$BASH_BIN" | priv tee -a /etc/shells >/dev/null
 	if [ "$(getent passwd "$USER_NAME" | awk -F: '{print $NF}')" != "$BASH_BIN" ]; then
 		log "Setting $USER_NAME login shell to bash"
-		$SUDO pw usermod "$USER_NAME" -s "$BASH_BIN"
+		priv pw usermod "$USER_NAME" -s "$BASH_BIN"
 	fi
 fi
 
@@ -161,9 +160,9 @@ OVR_SRC="$(dirname "$0")/../overrides"
 OVR_DST=/usr/local/share/omarchy-freebsd/overrides
 if [ -d "$OVR_SRC/bin" ]; then
 	log "Installing FreeBSD helper overrides to $OVR_DST"
-	$SUDO mkdir -p "$OVR_DST/bin"
-	$SUDO cp "$OVR_SRC"/bin/* "$OVR_DST/bin/"
-	$SUDO chmod +x "$OVR_DST"/bin/*
+	priv mkdir -p "$OVR_DST/bin"
+	priv cp "$OVR_SRC"/bin/* "$OVR_DST/bin/"
+	priv chmod +x "$OVR_DST"/bin/*
 fi
 
 # 7. Dotfiles: reuse omarchy-setup if the port installed it, else run it inline.
@@ -179,24 +178,26 @@ fi
 # point must live in /usr/local/bin (the shims it needs stay in ~/.local/bin,
 # which omarchy-session prepends to PATH itself).
 if ! command -v omarchy-session >/dev/null 2>&1 && [ ! -x /usr/local/bin/omarchy-session ]; then
-	$SUDO cp "$(dirname "$0")/../scripts/omarchy-session" /usr/local/bin/omarchy-session
-	$SUDO chmod +x /usr/local/bin/omarchy-session
+	priv cp "$(dirname "$0")/../scripts/omarchy-session" /usr/local/bin/omarchy-session
+	priv chmod +x /usr/local/bin/omarchy-session
 	log "Installed omarchy-session to /usr/local/bin"
 fi
 
 # FreeBSD system-update helper backing the menu's "Update > FreeBSD" entry.
 if [ ! -x /usr/local/bin/omarchy-update-freebsd ]; then
-	$SUDO cp "$(dirname "$0")/../scripts/omarchy-update-freebsd" /usr/local/bin/omarchy-update-freebsd
-	$SUDO chmod +x /usr/local/bin/omarchy-update-freebsd
+	priv cp "$(dirname "$0")/../scripts/omarchy-update-freebsd" /usr/local/bin/omarchy-update-freebsd
+	priv chmod +x /usr/local/bin/omarchy-update-freebsd
 	log "Installed omarchy-update-freebsd to /usr/local/bin"
 fi
 
 # FreeBSD pkg install/remove helpers backing the menu's Package entries, the
-# wpa_supplicant wifi selector, plus the porting audit tool.
-for helper in omarchy-pkg-install-freebsd omarchy-pkg-remove-freebsd omarchy-wifi-freebsd omarchy-doctor-freebsd; do
+# wpa_supplicant wifi selector, the tailscale setup entry, the ports/src tree
+# bootstrappers, plus the porting audit tool.
+for helper in omarchy-pkg-install-freebsd omarchy-pkg-remove-freebsd omarchy-wifi-freebsd \
+	omarchy-setup-network-tailscale omarchy-setup-freebsd-src omarchy-setup-freebsd-ports omarchy-doctor-freebsd; do
 	if [ ! -x "/usr/local/bin/$helper" ]; then
-		$SUDO cp "$(dirname "$0")/../scripts/$helper" "/usr/local/bin/$helper"
-		$SUDO chmod +x "/usr/local/bin/$helper"
+		priv cp "$(dirname "$0")/../scripts/$helper" "/usr/local/bin/$helper"
+		priv chmod +x "/usr/local/bin/$helper"
 		log "Installed $helper to /usr/local/bin"
 	fi
 done

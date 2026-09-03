@@ -1,0 +1,47 @@
+#!/bin/sh
+#
+# omarchy-setup-freebsd-src — create /usr/src as a git checkout of the FreeBSD
+# source tree, so it can later be kept current via the menu's
+# "Update > FreeBSD" entry (omarchy-update-freebsd does `git -C /usr/src pull`
+# but only when /usr/src/.git already exists).
+#
+# Wired in via the user menu extension omarchy-setup writes
+# (~/.config/omarchy/extensions/omarchy-menu.jsonc -> "Setup > FreeBSD > FreeBSD src").
+#
+# Runs as an unprivileged user, so it re-executes itself as root via doas
+# (installed+configured by bootstrap/install.sh).
+
+set -u
+
+SRC_REPO="${OMARCHY_FREEBSD_SRC_REPO:-https://git.FreeBSD.org/src.git}"
+SRC_BRANCH="${OMARCHY_FREEBSD_SRC_BRANCH:-main}"
+SRC_DIR=/usr/src
+
+if [ "$(id -u)" -ne 0 ]; then
+	exec doas "$0" "$@"
+fi
+
+step() { printf '\n==> %s\n' "$*"; }
+
+if [ -d "$SRC_DIR/.git" ]; then
+	step "$SRC_DIR is already a git checkout; nothing to do"
+	git -C "$SRC_DIR" config pull.ff only
+	exit 0
+fi
+
+if [ -d "$SRC_DIR" ] && [ -n "$(ls -A "$SRC_DIR" 2>/dev/null)" ]; then
+	echo "!! $SRC_DIR exists and is not empty and not a git checkout; refusing to touch it" >&2
+	exit 1
+fi
+
+step "Cloning $SRC_REPO ($SRC_BRANCH) into $SRC_DIR"
+mkdir -p "$SRC_DIR"
+git clone --branch "$SRC_BRANCH" "$SRC_REPO" "$SRC_DIR" || {
+	echo "!! git clone failed" >&2
+	exit 1
+}
+
+# ff-only matches the pull omarchy-update-freebsd runs.
+git -C "$SRC_DIR" config pull.ff only
+
+step "Done. /usr/src is ready; Update > FreeBSD will keep it current."

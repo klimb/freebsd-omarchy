@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# omarchy-setup-network-tailscale — enable tailscaled and bring the Tailscale
+# mesh VPN interface up, prompting to authenticate if not already logged in.
+#
+# Wired in via the user menu extension omarchy-setup writes
+# (~/.config/omarchy/extensions/omarchy-menu.jsonc -> "Setup > Network > Tailscale").
+#
+# Runs as an unprivileged user, so it re-executes itself as root via doas
+# (installed+configured by bootstrap/install.sh). tailscale up prints an
+# https://login.tailscale.com/... auth URL when not yet logged in; this runs
+# in a floating terminal so the user can read/copy it.
+
+set -u
+
+if [ "$(id -u)" -ne 0 ]; then
+	exec doas "$0" "$@"
+fi
+
+step() { printf '\n==> %s\n' "$*"; }
+
+command -v tailscale >/dev/null 2>&1 || {
+	echo "!! tailscale not installed (pkg install tailscale)" >&2
+	exit 1
+}
+
+step "Enabling tailscaled"
+sysrc tailscaled_enable=YES
+service tailscaled status >/dev/null 2>&1 || service tailscaled start
+
+step "Bringing Tailscale up"
+tailscale up "$@"
+
+step "Status"
+tailscale status

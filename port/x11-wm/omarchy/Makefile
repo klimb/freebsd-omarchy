@@ -46,7 +46,8 @@ RUN_DEPENDS=	Hyprland:x11-wm/hyprland \
 		ffmpegthumbnailer:multimedia/ffmpegthumbnailer \
 		pipewire>0:multimedia/pipewire \
 		wireplumber>0:multimedia/wireplumber \
-		git:devel/git
+		git:devel/git \
+		tailscale:net/tailscale
 
 # Shell/CLI experience Omarchy expects.
 RUN_DEPENDS+=	starship:shells/starship \

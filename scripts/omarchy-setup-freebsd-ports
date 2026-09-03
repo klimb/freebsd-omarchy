@@ -1,0 +1,47 @@
+#!/bin/sh
+#
+# omarchy-setup-freebsd-ports — create /usr/ports as a git checkout of the
+# FreeBSD ports tree, so it can later be kept current via the menu's
+# "Update > FreeBSD" entry (omarchy-update-freebsd does `git -C /usr/ports
+# pull` but only when /usr/ports/.git already exists).
+#
+# Wired in via the user menu extension omarchy-setup writes
+# (~/.config/omarchy/extensions/omarchy-menu.jsonc -> "Setup > FreeBSD > FreeBSD Ports").
+#
+# Runs as an unprivileged user, so it re-executes itself as root via doas
+# (installed+configured by bootstrap/install.sh).
+
+set -u
+
+PORTS_REPO="${OMARCHY_FREEBSD_PORTS_REPO:-https://git.FreeBSD.org/ports.git}"
+PORTS_BRANCH="${OMARCHY_FREEBSD_PORTS_BRANCH:-main}"
+PORTS_DIR=/usr/ports
+
+if [ "$(id -u)" -ne 0 ]; then
+	exec doas "$0" "$@"
+fi
+
+step() { printf '\n==> %s\n' "$*"; }
+
+if [ -d "$PORTS_DIR/.git" ]; then
+	step "$PORTS_DIR is already a git checkout; nothing to do"
+	git -C "$PORTS_DIR" config pull.ff only
+	exit 0
+fi
+
+if [ -d "$PORTS_DIR" ] && [ -n "$(ls -A "$PORTS_DIR" 2>/dev/null)" ]; then
+	echo "!! $PORTS_DIR exists and is not empty and not a git checkout; refusing to touch it" >&2
+	exit 1
+fi
+
+step "Cloning $PORTS_REPO ($PORTS_BRANCH) into $PORTS_DIR"
+mkdir -p "$PORTS_DIR"
+git clone --branch "$PORTS_BRANCH" "$PORTS_REPO" "$PORTS_DIR" || {
+	echo "!! git clone failed" >&2
+	exit 1
+}
+
+# ff-only matches the pull omarchy-update-freebsd runs.
+git -C "$PORTS_DIR" config pull.ff only
+
+step "Done. /usr/ports is ready; Update > FreeBSD will keep it current."

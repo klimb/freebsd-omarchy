@@ -960,6 +960,39 @@ cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
     "action": "xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-wifi-freebsd"
   },
 
+  // New "Setup > Network > Tailscale": enable tailscaled + `tailscale up` (auth
+  // if needed) in a floating terminal. icon reused from upstream's
+  // install.service.tailscale entry so it reads the same way across menus.
+  "setup.network.tailscale": {
+    "icon": "",
+    "label": "Tailscale",
+    "action": "omarchy-launch-floating-terminal-with-presentation omarchy-setup-network-tailscale"
+  },
+
+  // New "Setup > FreeBSD" submenu: bootstrap /usr/src and /usr/ports as git
+  // checkouts (with pull.ff=only configured) so "Update > FreeBSD"
+  // (omarchy-update-freebsd) can subsequently `git pull` them -- it only
+  // updates those trees when they are already git checkouts, it never
+  // creates them. icon = nf-linux-freebsd (beastie); iconFont "" renders it
+  // from the default nerd font instead of the "omarchy" logo font.
+  "setup.freebsd": {
+    "icon": "",
+    "iconFont": "",
+    "label": "FreeBSD"
+  },
+  "setup.freebsd.ports": {
+    "icon": "",
+    "iconFont": "",
+    "label": "FreeBSD Ports",
+    "action": "omarchy-launch-floating-terminal-with-presentation omarchy-setup-freebsd-ports"
+  },
+  "setup.freebsd.src": {
+    "icon": "",
+    "iconFont": "",
+    "label": "FreeBSD src",
+    "action": "omarchy-launch-floating-terminal-with-presentation omarchy-setup-freebsd-src"
+  },
+
   // "Learn > Omarchy" opens omarchy.org/manual (Arch/Linux-specific, not
   // relevant here); hide it by making its visibility guard always fail.
   "learn.omarchy": { "when": "false" },
