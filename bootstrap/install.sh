@@ -56,7 +56,7 @@ fi
 # gum backs the interactive prompts (gum input/choose/confirm) used pervasively
 # by omarchy's own install/setup scripts (e.g. Install > TUI, Install > Web App).
 PKGS="hyprland seatd bash foot alacritty pipewire wireplumber wl-clipboard grim slurp \
-hyprpicker xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec xdg-utils socat \
+hyprpicker hyprsunset xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-terminal-exec xdg-utils socat \
 starship zoxide fzf bat eza fd-find ripgrep jq btop lazygit tmux neovim imv git vips figlet gawk lua54 coreutils \
 noto-basic nerd-fonts font-awesome dbus py312-terminaltexteffects cmatrix gum \
 ImageMagick7 mpv wf-recorder ffmpeg pamixer fastfetch wtype unzip libqrencode gnome-keyring bash-completion chromium emacs-wayland hyprlock nautilus ffmpegthumbnailer tailscale"

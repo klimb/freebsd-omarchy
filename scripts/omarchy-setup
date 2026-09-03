@@ -510,6 +510,21 @@ write_shim date <<'SHIM'
 if command -v gdate >/dev/null 2>&1; then exec gdate "$@"; fi
 exec /bin/date "$@"
 SHIM
+
+# Drop the Dictation indicator from the bar (mic icon + "Dictate" click
+# action for voxtype, which has no FreeBSD build at all -- Install > AI >
+# Dictation is hidden for the same reason). shell.json already exists at
+# this point (copied from the clone's config/omarchy/ above); a plain
+# one-time file edit, no live-session IPC call needed (omarchy-restart-shell
+# picks it up on next login/restart).
+SHELL_JSON="$CONFIG_HOME/omarchy/shell.json"
+if [ -f "$SHELL_JSON" ] && command -v jq >/dev/null 2>&1; then
+	log "Hiding the Dictation bar indicator (no FreeBSD voxtype build)"
+	tmp="$SHELL_JSON.tmp"
+	jq '(.bar.layout[][] | select(.id == "omarchy.indicators")).items = ["ScreenRecording", "Reminder", "NightLight", "Dnd", "StayAwake"]' \
+		"$SHELL_JSON" > "$tmp" && mv "$tmp" "$SHELL_JSON"
+fi
+
 log "Writing FreeBSD session autostart to $CONFIG_HOME/hypr/autostart.lua"
 mkdir -p "$CONFIG_HOME/hypr"
 cat > "$CONFIG_HOME/hypr/autostart.lua" <<'LUA'

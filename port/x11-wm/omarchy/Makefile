@@ -39,6 +39,7 @@ RUN_DEPENDS=	Hyprland:x11-wm/hyprland \
 		socat:net/socat \
 		wl-copy:x11/wl-clipboard \
 		hyprpicker:x11/hyprpicker \
+		hyprsunset:accessibility/hyprsunset \
 		xdg-desktop-portal-hyprland>0:x11/xdg-desktop-portal-hyprland \
 		xdg-desktop-portal-gtk>0:x11/xdg-desktop-portal-gtk \
 		xdg-open:devel/xdg-utils \
