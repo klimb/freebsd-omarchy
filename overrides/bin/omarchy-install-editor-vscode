@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# omarchy-install-editor-vscode — install VS Code (Install > Editor > VSCode).
+#
+# Upstream installs the AUR "visual-studio-code-bin" (Microsoft's proprietary
+# build). FreeBSD only packages the open-source Code - OSS build as "vscode",
+# whose binary/desktop entry is code-oss (not code). Keep the rest of
+# upstream's setup: argv.json, disabling VSCode's own auto-updater, and the
+# Omarchy theme integration.
+
+set -eu
+
+echo "Installing VSCode..."
+omarchy-pkg-add vscode
+
+mkdir -p "$HOME/.vscode" "$HOME/.config/Code/User"
+
+cat > "$HOME/.vscode/argv.json" <<'EOF'
+// This configuration file allows you to pass permanent command line arguments to VS Code.
+// Only a subset of arguments is currently supported to reduce the likelihood of breaking
+// the installation.
+//
+// PLEASE DO NOT CHANGE WITHOUT UNDERSTANDING THE IMPACT
+//
+// NOTE: Changing this file requires a restart of VS Code.
+{
+  "password-store":"gnome-libsecret"
+}
+EOF
+
+# Ensure VSC's own auto-update feature is turned off.
+printf '{\n  "update.mode": "none"\n}\n' > "$HOME/.config/Code/User/settings.json"
+
+omarchy-theme-set-vscode
+
+setsid uwsm-app -- gtk-launch code-oss >/dev/null 2>&1 &

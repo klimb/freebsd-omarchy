@@ -1,0 +1,15 @@
+#!/bin/sh
+#
+# omarchy-pkg-present — FreeBSD pkg replacement for upstream's pacman -Q check.
+#
+# Used pervasively by menu "disabled" guards (dims + checkmarks an entry once
+# already installed) across the Install/Remove submenus. Same semantics as
+# upstream: true only if every named package is installed.
+
+set -eu
+
+for pkg in "$@"; do
+	pkg info -e "$pkg" >/dev/null 2>&1 || exit 1
+done
+
+exit 0

@@ -1,0 +1,18 @@
+#!/bin/sh
+#
+# omarchy-pkg-drop — FreeBSD pkg replacement for upstream's pacman -Rns.
+#
+# Removes only the named packages that are actually installed; silently
+# ignores the rest. Escalates with doas.
+
+set -eu
+
+installed=""
+for pkg in "$@"; do
+	pkg info -e "$pkg" >/dev/null 2>&1 && installed="$installed $pkg"
+done
+
+if [ -n "$installed" ]; then
+	# shellcheck disable=SC2086
+	doas pkg delete -y $installed
+fi

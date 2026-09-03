@@ -1066,6 +1066,90 @@ cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
   "remove.security.sshd": { "when": "false" },
   "remove.security.sudoless-docker": { "when": "false" },
 
+  // Install > Editor audit. vscode/zed/helix all have real FreeBSD ports (pkg
+  // names differ from upstream's AUR ones, so the disabled/already-installed
+  // check needs the FreeBSD name too); the install actions themselves are
+  // repointed via overrides/bin/omarchy-install-editor-{vscode,zed,helix}.
+  // vim needs no override (its action already goes through the now-FreeBSD
+  // omarchy-pkg-add, and the FreeBSD pkg name matches upstream's "vim").
+  // Cursor and Sublime Text are proprietary Electron/native builds with no
+  // FreeBSD port; Emacs's upstream action installs an AUR-only theming bundle
+  // (omarchy-emacs) that has no FreeBSD equivalent, and plain Emacs (Wayland
+  // flavor) is already a mandatory bootstrap package, so all three are hidden.
+  "install.editor.vscode": { "disabled": "omarchy-pkg-present vscode" },
+  "install.editor.zed": { "disabled": "omarchy-pkg-present zed-editor" },
+  "install.editor.cursor": { "when": "false" },
+  "install.editor.sublime": { "when": "false" },
+  "install.editor.emacs": { "when": "false" },
+
+  // Install > Style > Font: overrides/bin/omarchy-install-font skips the
+  // (Arch AUR, one-package-per-family) install step -- FreeBSD's nerd-fonts
+  // port already ships all six families -- and just switches to it. All six
+  // family names verified present via fc-list; no jsonc change needed.
+
+  // Install > Terminal: alacritty/foot/ghostty/kitty all have exact-name
+  // FreeBSD ports and need no changes -- they already work via the FreeBSD
+  // omarchy-pkg-add override.
+
+  // Install > Browser: chromium and firefox have real FreeBSD ports and work
+  // unchanged. Chrome, Edge, Brave, Brave Origin, and Zen are all proprietary
+  // binaries installed from AUR (omarchy-pkg-aur-add, which has no FreeBSD
+  // equivalent at all) with no FreeBSD port, so hide them.
+  "install.browser.chrome": { "when": "false" },
+  "install.browser.edge": { "when": "false" },
+  "install.browser.brave": { "when": "false" },
+  "install.browser.brave-origin": { "when": "false" },
+  "install.browser.zen": { "when": "false" },
+
+  // Install > Gaming: Steam, RetroArch (+ its whole libretro core set),
+  // Lutris, Heroic, and Battle.net-via-umu-launcher have NO FreeBSD ports
+  // (verified via pkg search); Xbox controller support needs xpadneo-dkms, a
+  // Linux kernel DKMS module; GeForce NOW downloads a Linux-only CEF/Electron
+  // binary installer. Hide all of them. Xbox Cloud Gaming is left enabled --
+  // it is a plain webapp shortcut with no package dependency at all.
+  "install.gaming.steam": { "when": "false" },
+  "install.gaming.retroarch": { "when": "false" },
+  "install.gaming.retro-launcher": { "when": "false" },
+  "install.gaming.lutris": { "when": "false" },
+  "install.gaming.heroic": { "when": "false" },
+  "install.gaming.battlenet": { "when": "false" },
+  "install.gaming.geforce-now": { "when": "false" },
+  "install.gaming.xbox-controllers": { "when": "false" },
+
+  // Install > Service: Signal and Tailscale have real FreeBSD ports and are
+  // repointed via overrides/bin/omarchy-install-service-{signal,tailscale}
+  // (both disabled-checks already match the FreeBSD pkg names, no jsonc
+  // change needed there). 1Password, Dropbox, Spotify, NordVPN, ONCE, and
+  // Bitwarden are all proprietary Linux-only binaries with no FreeBSD port
+  // (verified via pkg search); hide them. Chromium Account needs no change
+  // (just edits chromium-flags.conf, no package dependency).
+  "install.service.1password": { "when": "false" },
+  "install.service.dropbox": { "when": "false" },
+  "install.service.spotify": { "when": "false" },
+  "install.service.nordvpn": { "when": "false" },
+  "install.service.once": { "when": "false" },
+  "install.service.bitwarden": { "when": "false" },
+
+  // Install > Development: everything here runs through mise (packaged for
+  // FreeBSD) or a language's own cross-platform installer (rustup, opam), so
+  // it is left alone except PHP/Laravel/Symfony -- their shared install_php()
+  // helper hardcodes Arch package names (php, php-sqlite) and Linux FHS paths
+  // (/etc/php/php.ini, /etc/php/conf.d) that don't exist on FreeBSD at all.
+  "install.development.php": { "when": "false" },
+  "install.development.php.php": { "when": "false" },
+  "install.development.php.laravel": { "when": "false" },
+  "install.development.php.symfony": { "when": "false" },
+
+  // Install > Windows: omarchy-windows-vm is a KVM/libvirt Windows VM
+  // manager; FreeBSD's virtualization stack is bhyve, not KVM, so none of it
+  // applies. Install > Preinstalls restores a specific bundle of apps an Arch
+  // ISO ships pre-installed (a concept that doesn't exist for our from-scratch
+  // bootstrap) with several uncertain-on-FreeBSD package names; hide both
+  // directions.
+  "install.windows": { "when": "false" },
+  "install.preinstalls": { "when": "false" },
+  "remove.preinstalls": { "when": "false" },
+
   // Screen recording is video-only on FreeBSD (wf-recorder; no PipeWire audio
   // capture or V4L2 webcam overlay yet). Collapse the audio/webcam soundtrack
   // choices to a single "Record screen" entry; the Stop entry still works via

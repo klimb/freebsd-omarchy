@@ -1,0 +1,15 @@
+#!/bin/sh
+#
+# omarchy-install-editor-zed — install Zed (Install > Editor > Zed).
+#
+# Upstream installs "zed" + "omazed" (an AUR-only Omarchy theme-integration
+# helper). FreeBSD's real port is "zed-editor" (plain "zed" is an unrelated
+# data-lake CLI) and has no omazed equivalent, so that step is skipped. The
+# desktop entry is still dev.zed.Zed, same as upstream.
+
+set -eu
+
+echo "Installing Zed Editor..."
+omarchy-pkg-add zed-editor
+
+setsid uwsm-app -- gtk-launch dev.zed.Zed >/dev/null 2>&1 &

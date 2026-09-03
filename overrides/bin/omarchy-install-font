@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# omarchy-install-font — switch to a bundled Nerd Font (Install > Style > Font).
+#
+# Upstream installs one AUR package per font family. FreeBSD's nerd-fonts port
+# (already in bootstrap PKGS) ships every family in a single package, so there
+# is nothing to install here; just switch to the requested family.
+
+set -eu
+
+name="${1:-}"
+family="${3:-}"
+
+if [ -z "$name" ] || [ -z "$family" ]; then
+	echo "Usage: omarchy-install-font <display-name> <package> <family>" >&2
+	exit 1
+fi
+
+exec omarchy-launch-floating-terminal-with-presentation \
+	"echo 'Switching to $name...'; omarchy-font-set '$family'"

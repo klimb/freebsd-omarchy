@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# omarchy-pkg-add — FreeBSD pkg replacement for upstream's pacman -S --needed.
+#
+# Used internally by omarchy-install-app and the per-item install scripts to
+# ensure packages are present before launching them. Escalates with doas,
+# matching omarchy-pkg-install-freebsd.
+
+set -eu
+
+missing=""
+for pkg in "$@"; do
+	pkg info -e "$pkg" >/dev/null 2>&1 || missing="$missing $pkg"
+done
+
+if [ -n "$missing" ]; then
+	# shellcheck disable=SC2086
+	doas pkg install -y $missing
+fi
+
+for pkg in "$@"; do
+	if ! pkg info -e "$pkg" >/dev/null 2>&1; then
+		echo "Error: Package '$pkg' did not install" >&2
+		exit 1
+	fi
+done

@@ -1,0 +1,13 @@
+#!/bin/sh
+#
+# omarchy-pkg-missing — FreeBSD pkg replacement for upstream's pacman -Q check.
+#
+# Inverse of omarchy-pkg-present: true if any named package is NOT installed.
+
+set -eu
+
+for pkg in "$@"; do
+	pkg info -e "$pkg" >/dev/null 2>&1 || exit 0
+done
+
+exit 1
