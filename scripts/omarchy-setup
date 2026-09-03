@@ -1046,6 +1046,26 @@ cat > "$CONFIG_HOME/omarchy/extensions/omarchy-menu.jsonc" <<'JSONC'
   "update.config.plymouth": { "when": "false" },
   "update.password.drive": { "when": "false" },
 
+  // Setup/Remove > Security is entirely Arch/Linux-specific: fingerprint (sysfs
+  // USB detection + libfprint/fprintd from pacman) and FIDO2 (pam-u2f) both edit
+  // /etc/pam.d/{sudo,polkit-1} (Linux PAM stack, not FreeBSD's OpenPAM layout);
+  // SSHD setup opens a UFW firewall rule (FreeBSD has none, uses pf) and manages
+  // sudoers timers via systemd-run; sudoless Docker requires Docker, which isn't
+  // ported here at all. None of it maps cleanly, so hide the whole section
+  // (parent + every child, both Setup and Remove) rather than leave a
+  // half-working submenu.
+  "setup.security": { "when": "false" },
+  "setup.security.fingerprint": { "when": "false" },
+  "setup.security.fido2": { "when": "false" },
+  "setup.security.sshd": { "when": "false" },
+  "setup.security.passwordless-sudo": { "when": "false" },
+  "setup.security.sudoless-docker": { "when": "false" },
+  "remove.security": { "when": "false" },
+  "remove.security.fingerprint": { "when": "false" },
+  "remove.security.fido2": { "when": "false" },
+  "remove.security.sshd": { "when": "false" },
+  "remove.security.sudoless-docker": { "when": "false" },
+
   // Screen recording is video-only on FreeBSD (wf-recorder; no PipeWire audio
   // capture or V4L2 webcam overlay yet). Collapse the audio/webcam soundtrack
   // choices to a single "Record screen" entry; the Stop entry still works via
