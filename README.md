@@ -23,8 +23,7 @@ Have fun!
 ## Install
 
 Start from a fresh, minimal FreeBSD install. Run as your **normal user** (not
-root — Hyprland refuses to run as root) with `doas` already installed and
-configured.
+root — Hyprland refuses to run as root).
 
 ```sh
 git clone https://github.com/klimb/freebsd-omarchy
@@ -37,6 +36,20 @@ Reboot, login as non-root, then:
 ```sh
 omg
 ```
+
+## Uninstall
+
+```sh
+doas pkg delete omarchy
+doas pkg autoremove
+rm -rf ~/.local/src/omarchy ~/.local/state/omarchy ~/.local/bin ~/.config/{hypr,omarchy,alacritty,foot,ghostty,kitty,imv,btop,lazygit,tmux}
+```
+
+`pkg delete` only removes what the port installed (`omg`, `omarchy-setup`, and
+the other `omarchy-*` helpers); `autoremove` drops now-unused dependencies
+(Hyprland, etc.) if nothing else on the system needs them. The `rm -rf` line
+removes the per-user state `omarchy-setup` wrote (the cloned dotfiles, shims,
+and generated configs) — skip it to keep those around.
 
 ## Key differences from Omarchy
 
