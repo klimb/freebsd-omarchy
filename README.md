@@ -45,12 +45,6 @@ doas pkg autoremove
 rm -rf ~/.local/src/omarchy ~/.local/state/omarchy ~/.local/bin ~/.config/{hypr,omarchy,alacritty,foot,ghostty,kitty,imv,btop,lazygit,tmux}
 ```
 
-`pkg delete` only removes what the port installed (`omg`, `omarchy-setup`, and
-the other `omarchy-*` helpers); `autoremove` drops now-unused dependencies
-(Hyprland, etc.) if nothing else on the system needs them. The `rm -rf` line
-removes the per-user state `omarchy-setup` wrote (the cloned dotfiles, shims,
-and generated configs) — skip it to keep those around.
-
 ## Key differences from Omarchy
 
 Omarchy Linux Distribution is essentially Arch Linux + Custom Installer + themed HyprLand Window Manager + Bundled pre-configured software.
