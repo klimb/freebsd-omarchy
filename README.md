@@ -39,6 +39,8 @@ omg
 
 ## Uninstall
 
+If you don't like it, remove it like any other FreeBSD package (with pkg delete):
+
 ```sh
 doas pkg delete omarchy
 doas pkg autoremove
