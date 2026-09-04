@@ -24,10 +24,9 @@ Have fun!
 
 Start from a fresh, minimal FreeBSD install. Run as your **normal user** (not
 root — Hyprland refuses to run as root) with `doas` already installed and
-configured, or run the script as root once.
+configured.
 
 ```sh
-pkg install -y git
 git clone https://github.com/klimb/freebsd-omarchy
 cd freebsd-omarchy
 sh bootstrap/install.sh
