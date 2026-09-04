@@ -196,7 +196,7 @@ All ~300 `omarchy-*` helpers are `#!/bin/bash`, so **`shells/bash` is a hard run
 |---|---|---|
 | every `omarchy-*` | `#!/bin/bash` | add `shells/bash` dep |
 | `omarchy-launch-shell` (the bar) | wraps QuickShell in `systemd-cat` | `systemd-cat` shim |
-| `omarchy-launch-terminal` | execs `xdg-terminal-exec` + `setsid` | `x11/xdg-terminal-exec` dep + `setsid` shim |
+| `omarchy-launch-terminal` | execs `xdg-terminal-exec` + `setsid` | `deskutils/xdg-terminal-exec` dep + `setsid` shim |
 | `o.launch` (all app launches) | `uwsm-app -- cmd` | `uwsm-app` shim |
 | launch scripts (pervasive) | `setsid` (not in base) | `setsid` shim |
 | `omarchy-theme-set` | `flock`, `base64 -w 0` | `flock` + `base64`→openssl shims |

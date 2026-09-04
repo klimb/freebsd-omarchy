@@ -10,9 +10,16 @@ WWW=		https://github.com/omacom/omarchy
 LICENSE=	MIT
 LICENSE_FILE=	${WRKSRC}/LICENSE
 
-# This is NOT a metaport: USES=metaport forces NO_INSTALL, but we ship the
-# omg launcher and omarchy-setup helper. So pull the deps via
-# RUN_DEPENDS and install our own files with a custom do-install.
+# This is NOT a metaport: USES=metaport forces NO_INSTALL, but we ship a
+# whole tree of omarchy-* helper scripts and FreeBSD overrides. So pull the
+# deps via RUN_DEPENDS and install our own files with a custom do-install.
+#
+# bootstrap/install.sh (the standalone installer) drives this exact Makefile
+# too -- RUN_DEPENDS and do-install below are the ONLY place package/script
+# lists live. For local development (no cut release tag yet), install.sh
+# builds its own distfile from the working tree and runs NO_CHECKSUM=yes
+# make install; a real release just needs DISTVERSION bumped, a matching
+# git tag pushed, and `make makesum` run to fill in distinfo.
 USE_GITHUB=	yes
 GH_ACCOUNT=	klimb
 GH_PROJECT=	freebsd-omarchy
@@ -20,7 +27,7 @@ GH_PROJECT=	freebsd-omarchy
 NO_BUILD=	yes
 NO_ARCH=	yes
 USES=		shebangfix
-SHEBANG_FILES=	scripts/omg scripts/omarchy-setup
+SHEBANG_FILES=	scripts/* overrides/bin/*
 
 # Core desktop: compositor, seat/audio backend, terminal, portals, wl utils.
 # bash is required: every omarchy-* helper is a #!/bin/bash script. socat and
@@ -29,11 +36,11 @@ SHEBANG_FILES=	scripts/omg scripts/omarchy-setup
 # user's ~/.local/bin by omarchy-setup, not installed here.
 # NOTE: verify every origin on the target box with `make search name=<pkg>`.
 RUN_DEPENDS=	Hyprland:x11-wm/hyprland \
-		hyprlock:x11-wm/hyprlock \
+		hyprlock:x11/hyprlock \
 		seatd:sysutils/seatd \
 		bash:shells/bash \
 		foot:x11/foot \
-		xdg-terminal-exec:x11/xdg-terminal-exec \
+		xdg-terminal-exec:deskutils/xdg-terminal-exec \
 		grim:x11/grim \
 		slurp:x11/slurp \
 		socat:net/socat \
@@ -48,7 +55,7 @@ RUN_DEPENDS=	Hyprland:x11-wm/hyprland \
 		pipewire>0:multimedia/pipewire \
 		wireplumber>0:multimedia/wireplumber \
 		git:devel/git \
-		tailscale:net/tailscale \
+		tailscale:security/tailscale \
 		gum:devel/gum
 
 # Shell/CLI experience Omarchy expects.
@@ -76,12 +83,12 @@ RUN_DEPENDS+=	convert:graphics/ImageMagick7 \
 		fastfetch:sysutils/fastfetch \
 		wtype:x11/wtype \
 		unzip:archivers/unzip \
-		qrencode:graphics/qrencode \
+		qrencode:graphics/libqrencode \
 		gnome-keyring-daemon:security/gnome-keyring \
 		bash-completion>0:shells/bash-completion
 
 # Fonts for the Omarchy look.
-RUN_DEPENDS+=	${LOCALBASE}/share/fonts/nerd-fonts/SymbolsNerdFont-Regular.ttf:x11-fonts/nerd-fonts \
+RUN_DEPENDS+=	nerd-fonts>0:x11-fonts/nerd-fonts \
 		noto-basic>0:x11-fonts/noto-basic \
 		font-awesome>0:x11-fonts/font-awesome
 
@@ -99,10 +106,21 @@ ALACRITTY_RUN_DEPENDS=	alacritty:x11/alacritty
 IMV_RUN_DEPENDS=	imv:graphics/imv
 CHROMIUM_RUN_DEPENDS=	chrome:www/chromium
 
+# Dynamic pkg-plist (Porter's Handbook 8.4): every script under scripts/
+# ships to bin/, every FreeBSD override under overrides/bin/ ships to a share
+# dir omarchy-setup copies from after cloning the dotfiles. Deliberately
+# dynamic so a new helper just needs to be added to one of those two
+# directories -- no Makefile or plist edit, and nothing to keep in sync.
 do-install:
-	${INSTALL_SCRIPT} ${WRKSRC}/scripts/omg \
-		${STAGEDIR}${PREFIX}/bin/omg
-	${INSTALL_SCRIPT} ${WRKSRC}/scripts/omarchy-setup \
-		${STAGEDIR}${PREFIX}/bin/omarchy-setup
+	${MKDIR} ${STAGEDIR}${PREFIX}/bin
+	cd ${WRKSRC}/scripts && for f in *; do \
+		${INSTALL_SCRIPT} $$f ${STAGEDIR}${PREFIX}/bin/$$f; \
+		${ECHO_CMD} bin/$$f >> ${TMPPLIST}; \
+	done
+	${MKDIR} ${STAGEDIR}${PREFIX}/share/omarchy-freebsd/overrides/bin
+	cd ${WRKSRC}/overrides/bin && for f in *; do \
+		${INSTALL_SCRIPT} $$f ${STAGEDIR}${PREFIX}/share/omarchy-freebsd/overrides/bin/$$f; \
+		${ECHO_CMD} share/omarchy-freebsd/overrides/bin/$$f >> ${TMPPLIST}; \
+	done
 
 .include <bsd.port.mk>
