@@ -54,7 +54,7 @@ When it finishes, **reboot** (to load the GPU driver and pick up the group and
 shell changes), then start the desktop:
 
 ```sh
-omarchy-session
+omg
 ```
 
 ### Alternative: build the port
@@ -67,17 +67,17 @@ cp -R port/x11-wm/omarchy /usr/ports/x11-wm/omarchy
 cd /usr/ports/x11-wm/omarchy && make install clean
 ```
 
-The port pulls in the desktop via its dependencies and installs `omarchy-session`
+The port pulls in the desktop via its dependencies and installs `omg`
 and `omarchy-setup`. Then follow the printed `pkg-message`: enable `seatd`/`dbus`,
 add yourself to the `video` group, load a KMS driver for your GPU, reboot, run
-`omarchy-setup`, and finally `omarchy-session`.
+`omarchy-setup`, and finally `omg`.
 
 ## Start Omarchy
 
 Log in to FreeBSD over a console and type:
 
 ```sh
-omarchy-session
+omg
 ```
 
 ## Key differences from Omarchy
@@ -99,7 +99,7 @@ equivalent:
 | **Package management** | `pacman`/`yay` | FreeBSD has a better package manager: (1) `pkg` for binary packages and (2) the ports mechanism (for building packages from source) |
 | **Networking** | NetworkManager (`nmcli`) | `wpa_supplicant` + `ifconfig`/`route` (`omarchy-wifi-freebsd`, `omarchy-network-status`, `omarchy-restart-wifi`); the QuickShell network panel falls back to this status data since it has no D-Bus/NetworkManager backend |
 | **Power management** | `systemd-inhibit`, `systemd-run`, `acpi` | `acpiconf`/`sysctl`; shims translate the systemd calls where practical |
-| **Compositor session launch** | `uwsm` + systemd user units | `omarchy-session` sets `XDG_RUNTIME_DIR`, `OMARCHY_PATH`, and Wayland/Qt env vars directly, then execs Hyprland; a generated `~/.config/hypr/autostart.lua` starts PipeWire/WirePlumber/the XDG portal without socket activation |
+| **Compositor session launch** | `uwsm` + systemd user units | `omg` sets `XDG_RUNTIME_DIR`, `OMARCHY_PATH`, and Wayland/Qt env vars directly, then execs Hyprland; a generated `~/.config/hypr/autostart.lua` starts PipeWire/WirePlumber/the XDG portal without socket activation |
 | **Containers / VMs** | Docker | instead of Docker (Linux technology), we'll use [Sylve](https://github.com/AlchemillaHQ/Sylve) UI for managing Bhyve / Jails (see [ROADMAP.md](ROADMAP.md)) |
 | **Bluetooth** | BlueZ (`bluetoothctl`) | planned, not implemented yet (see [ROADMAP.md](ROADMAP.md)) |
 | **Fingerprint auth** | `fprintd` | planned, not implemented yet (see [ROADMAP.md](ROADMAP.md)) |

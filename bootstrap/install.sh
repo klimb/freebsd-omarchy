@@ -178,11 +178,11 @@ fi
 # 7. Provide the launcher on the default login PATH if the port did not install
 # it. ~/.local/bin is NOT on FreeBSD's default PATH, so the user-typed entry
 # point must live in /usr/local/bin (the shims it needs stay in ~/.local/bin,
-# which omarchy-session prepends to PATH itself).
-if ! command -v omarchy-session >/dev/null 2>&1 && [ ! -x /usr/local/bin/omarchy-session ]; then
-	priv cp "$(dirname "$0")/../scripts/omarchy-session" /usr/local/bin/omarchy-session
-	priv chmod +x /usr/local/bin/omarchy-session
-	log "Installed omarchy-session to /usr/local/bin"
+# which omg prepends to PATH itself).
+if ! command -v omg >/dev/null 2>&1 && [ ! -x /usr/local/bin/omg ]; then
+	priv cp "$(dirname "$0")/../scripts/omg" /usr/local/bin/omg
+	priv chmod +x /usr/local/bin/omg
+	log "Installed omg to /usr/local/bin"
 fi
 
 # FreeBSD system-update helper backing the menu's "Update > FreeBSD" entry.
@@ -204,4 +204,4 @@ for helper in omarchy-pkg-install-freebsd omarchy-pkg-remove-freebsd omarchy-wif
 	fi
 done
 
-log "Done. Log out/in for group changes, then run: omarchy-session"
+log "Done. Log out/in for group changes, then run: omg"

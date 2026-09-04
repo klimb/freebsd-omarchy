@@ -6,10 +6,10 @@ Wayland utilities, fonts, themes, and a TTY-launch workflow.
 
 The port pulls in the desktop dependencies and installs two helpers:
 
-  omarchy-session  Launch the desktop from a TTY (sets up the FreeBSD Wayland
+  omg              Launch the desktop from a TTY (sets up the FreeBSD Wayland
                    environment and execs Hyprland).
   omarchy-setup    Clone the Omarchy dotfiles into your home directory and
                    apply the FreeBSD path adaptations.
 
 After installing, run `omarchy-setup` once, add yourself to the video group,
-then log in on a TTY and run `omarchy-session`.
+then log in on a TTY and run `omg`.

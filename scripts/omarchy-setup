@@ -70,7 +70,7 @@ done
 # 3. Wayland session services + Linux-compat shims.
 # Omarchy is built for Arch/systemd and calls Linux-only tools (uwsm-app,
 # setsid, systemd-cat, flock, GNU base64). Provide small shims on ~/.local/bin
-# (which omarchy-session puts on PATH) so the helper scripts run unchanged.
+# (which omg puts on PATH) so the helper scripts run unchanged.
 SHIM_DIR="$HOME/.local/bin"
 mkdir -p "$SHIM_DIR"
 
@@ -541,26 +541,30 @@ o.exec_on_start("wireplumber")
 o.exec_on_start("pgrep -x xdg-desktop-portal-hyprland >/dev/null 2>&1 || " ..
 	"/usr/local/libexec/xdg-desktop-portal-hyprland")
 
--- One-time: add the Tailscale bar widget (left of Wi-Fi). Unlike `omarchy bar
--- put`, `omarchy plugin enable` does NOT retry if omarchy-shell (quickshell)
--- isn't listening on its IPC socket yet, so it can lose the race against the
--- shell's own startup at session launch; retry it ourselves for up to a
--- minute. Guarded by a marker file so it only runs (and touches the marker)
--- once it actually succeeds.
+-- Add the Tailscale bar widget (left of Wi-Fi) EVERY session start, not just
+-- once: `omarchy plugin enable` only mutates the running quickshell's
+-- in-memory bar layout over IPC, it is never written back to shell.json on
+-- disk, so a fresh quickshell process after a reboot/relogin always starts
+-- without it again. (A one-time marker-file guard was tried here before and
+-- caused exactly that regression: it enabled the widget live once, then
+-- skipped re-enabling it on every later boot because the marker already
+-- existed.) Unlike `omarchy bar put`, `omarchy plugin enable` does NOT retry
+-- if quickshell isn't listening on its IPC socket yet, so it can lose the
+-- race against the shell's own startup; retry it ourselves for up to a
+-- minute, every session, until it succeeds.
 o.exec_on_start(
-	"m=\"$HOME/.local/state/omarchy/tailscale-bar-enabled\"; " ..
 	"l=\"$HOME/.local/state/omarchy/tailscale-bar-enable.log\"; " ..
-	"[ -f \"$m\" ] || (mkdir -p \"$(dirname \"$m\")\"; i=0; " ..
+	"(mkdir -p \"$(dirname \"$l\")\"; i=0; " ..
 	"while [ \"$i\" -lt 60 ]; do " ..
 	"omarchy plugin enable omarchy.tailscale --before omarchy.network >\"$l\" 2>&1 " ..
-	"&& { touch \"$m\"; break; }; i=$((i+1)); sleep 1; done) &"
+	"&& break; i=$((i+1)); sleep 1; done) &"
 )
 
 -- Add your own session apps here, e.g.:
 -- o.launch_on_start("my-service")
 LUA
 
-# Silence startup warnings that don't apply on FreeBSD. omarchy-session execs
+# Silence startup warnings that don't apply on FreeBSD. omg execs
 # Hyprland directly (not the start-hyprland watchdog) and XDG_RUNTIME_DIR is
 # /var/run/user or /tmp; append the disables to the loaded looknfeel module.
 log "Disabling FreeBSD-inapplicable Hyprland warnings in $CONFIG_HOME/hypr/looknfeel.lua"
@@ -1234,4 +1238,4 @@ BASHPROFILE
 log "Done."
 log "Add yourself to the video group (as root) if you have not yet:"
 log "    pw groupmod video -m $(id -un)"
-log "Then log in on a TTY and run: omarchy-session"
+log "Then log in on a TTY and run: omg"

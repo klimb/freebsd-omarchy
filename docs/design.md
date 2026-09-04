@@ -9,7 +9,7 @@
 
 - Install the `freebsd-omarchy` port and end up with a usable Hyprland desktop, no manual dotfile wrangling.
 - Start from a fresh, minimal FreeBSD install (no X/Wayland, no display manager, no desktop), just a base system and a TTY login.
-- Workflow: install FreeBSD, `pkg install omarchy` (or build the port), log in on a TTY, run `omarchy-session`, land in a themed desktop.
+- Workflow: install FreeBSD, `pkg install omarchy` (or build the port), log in on a TTY, run `omg`, land in a themed desktop.
 - Fonts, themes, wallpapers, terminal, top bar, and keybinds preconfigured to match Omarchy out of the box.
 - Pull in only what the desktop needs; nothing from the "out of scope" list below.
 
@@ -89,8 +89,8 @@ TTY Login
 
 Verified against the FreeBSD ports tree and Omarchy upstream:
 
-- **Not a metaport.** `USES=metaport` (`Mk/Uses/metaport.mk`) forces `NO_INSTALL=yes`, so a pure metaport cannot ship our `omarchy-session`/`omarchy-setup` scripts. Instead the port uses `USE_GITHUB` + `NO_BUILD` + `NO_ARCH` with a custom `do-install`, pulling the desktop via `RUN_DEPENDS` (the pattern used by `x11/gnome`, `x11-wm/xfce4`).
-- **Hyprland already ships a launcher.** `x11-wm/hyprland` (currently `0.56.2`) installs `bin/start-hyprland`, `share/wayland-sessions/hyprland.desktop`, and `share/xdg-desktop-portal/hyprland-portals.conf`. To avoid a plist conflict our launcher is named **`omarchy-session`**. It is built with `CMAKE_ON=NO_SYSTEMD` and uses `seatd`; `XDG_RUNTIME_DIR` falls back to `/var/run/user/UID`.
+- **Not a metaport.** `USES=metaport` (`Mk/Uses/metaport.mk`) forces `NO_INSTALL=yes`, so a pure metaport cannot ship our `omg`/`omarchy-setup` scripts. Instead the port uses `USE_GITHUB` + `NO_BUILD` + `NO_ARCH` with a custom `do-install`, pulling the desktop via `RUN_DEPENDS` (the pattern used by `x11/gnome`, `x11-wm/xfce4`).
+- **Hyprland already ships a launcher.** `x11-wm/hyprland` (currently `0.56.2`) installs `bin/start-hyprland`, `share/wayland-sessions/hyprland.desktop`, and `share/xdg-desktop-portal/hyprland-portals.conf`. To avoid a plist conflict our launcher is named **`omg`**. It is built with `CMAKE_ON=NO_SYSTEMD` and uses `seatd`; `XDG_RUNTIME_DIR` falls back to `/var/run/user/UID`.
 - **Version alignment.** Hyprland lags upstream at `0.56.2`; Omarchy's `quattro` branch already carries `0.56` compatibility shims, so pin to `quattro`.
 - **Corrected port origins.** `grim`→`x11/grim`, `slurp`→`x11/slurp` (not `graphics/*`), `xdg-desktop-portal-hyprland`→`x11/xdg-desktop-portal-hyprland`, portal frontend→`deskutils/xdg-desktop-portal`. All other origins must be confirmed with `make search name=<pkg>` on the target box.
 - **Top bar.** Omarchy's bar is a QuickShell/QML bar (repo is ~28% QML); `config/` also carries a `waybar/` fallback. The port exposes both via `OPTIONS_DEFINE= QUICKSHELL WAYBAR`.
@@ -110,7 +110,7 @@ RUN_DEPENDS=	Hyprland:x11-wm/hyprland seatd:sysutils/seatd foot:x11/foot \
 		pipewire>0:multimedia/pipewire wireplumber>0:multimedia/wireplumber
 OPTIONS_DEFINE=	QUICKSHELL WAYBAR
 do-install:
-	${INSTALL_SCRIPT} ${WRKSRC}/scripts/omarchy-session ${STAGEDIR}${PREFIX}/bin/
+	${INSTALL_SCRIPT} ${WRKSRC}/scripts/omg ${STAGEDIR}${PREFIX}/bin/
 	${INSTALL_SCRIPT} ${WRKSRC}/scripts/omarchy-setup   ${STAGEDIR}${PREFIX}/bin/
 ```
 
@@ -118,7 +118,7 @@ do-install:
 
 ## Launcher Script
 
-**`omarchy-session`** (installed to `${PREFIX}/bin` by the port; the design's
+**`omg`** (installed to `${PREFIX}/bin` by the port; the design's
 original `~/.local/bin/start-hyprland` name would collide with the file the
 `x11-wm/hyprland` port already installs)
 
@@ -176,7 +176,7 @@ Most configs work as-is. Known changes needed:
    - **Ship a `uwsm-app` shim** (`[ "$1" = -- ] && shift; exec "$@"`) so all of Omarchy's `uwsm-app -- cmd` call sites work unchanged.
    - **Generate a FreeBSD `~/.config/hypr/autostart.lua`** (the user override, loaded after defaults) that starts what systemd would have socket-activated: `pipewire`, `pipewire-pulse`, `wireplumber`, and the `xdg-desktop-portal-hyprland` backend via `o.exec_on_start` (direct, no uwsm).
    - The leftover `systemctl`/`dbus-update-activation-environment --systemd` calls in the default autostart fail harmlessly (missing command / no systemd) and need no patching.
-   - **Export `OMARCHY_PATH`** (to the cloned source) and prepend `$OMARCHY_PATH/bin` + `~/.local/bin` to `PATH` in `omarchy-session`, so `hyprland.lua` finds `default/hypr/bootstrap.lua` and the `omarchy-*` helpers/shim resolve.
+   - **Export `OMARCHY_PATH`** (to the cloned source) and prepend `$OMARCHY_PATH/bin` + `~/.local/bin` to `PATH` in `omg`, so `hyprland.lua` finds `default/hypr/bootstrap.lua` and the `omarchy-*` helpers/shim resolve.
 
    > Follow-up: many `omarchy-*` helper scripts in `bin/` are `#!/bin/bash` with Linux-isms (`pacman`, `systemctl`, `power-profiles-daemon`, `udiskie`); non-core ones fail harmlessly, but a fully polished desktop needs an audit pass over the launch/theme helpers.
 
@@ -206,7 +206,7 @@ All ~300 `omarchy-*` helpers are `#!/bin/bash`, so **`shells/bash` is a hard run
 | `omarchy-powerprofiles-*` | power-profiles-daemon (systemd) | fails harmlessly (non-core) |
 | `omarchy-provision-first-run` | systemd user units, GNOME/GTK hooks | steps fail harmlessly; retries each login |
 
-**Linux-compat shim bundle.** `omarchy-setup` writes five POSIX-sh shims to `~/.local/bin` (which `omarchy-session` puts on `PATH`), so the upstream scripts run unchanged and updates never clobber them:
+**Linux-compat shim bundle.** `omarchy-setup` writes five POSIX-sh shims to `~/.local/bin` (which `omg` puts on `PATH`), so the upstream scripts run unchanged and updates never clobber them:
 
 - `uwsm-app` — strip leading `--`, `exec` the command.
 - `setsid` — strip flags, `exec` (Hyprland already reaps children).
@@ -316,13 +316,13 @@ echo "Done. Log in on TTY and run: start-hyprland"
 Validated in a **FreeBSD 15.1-RELEASE arm64 QEMU/hvf VM** (tooling under `test/vm/`):
 
 - All 33 package names resolve in `FreeBSD:15:aarch64`; `hyprland`, `foot`, `pipewire`, `seatd` install cleanly.
-- `bootstrap/install.sh` + `omarchy-setup` run end to end: shims installed, `autostart.lua` generated, Omarchy `quattro` configs staged, `omarchy-session` installed.
+- `bootstrap/install.sh` + `omarchy-setup` run end to end: shims installed, `autostart.lua` generated, Omarchy `quattro` configs staged, `omg` installed.
 - Bug caught & fixed: FreeBSD `seatd` grants access via the **`video`** group (owns `/var/run/seatd.sock`); there is no `seat` group.
 
 **Not testable in a VM — needs real hardware:** the live graphical session.
 Hyprland's backend library **Aquamarine** takes its buffer allocator from **gbm/DRM**. FreeBSD has no virtio-gpu KMS driver (and no `vkms`-style virtual DRM), so no `/dev/dri` exists in any FreeBSD guest (arm64 or amd64, QEMU or bhyve). Aquamarine then aborts with `Cannot open backend: no allocator available` — even headless, and even though software EGL (`llvmpipe`, surfaceless) is present. A `wayvnc` path is therefore not viable for Hyprland.
 
-**Recommended real-hardware test:** a machine with an Intel (`i915`) or AMD (`amdgpu`) GPU supported by `graphics/drm-kmod`, booting FreeBSD on a TTY, then `omarchy-session`. The VM remains the CI/build/config validator.
+**Recommended real-hardware test:** a machine with an Intel (`i915`) or AMD (`amdgpu`) GPU supported by `graphics/drm-kmod`, booting FreeBSD on a TTY, then `omg`. The VM remains the CI/build/config validator.
 
 ---
 

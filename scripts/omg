@@ -1,11 +1,11 @@
 #!/bin/sh
 #
-# omarchy-session — launch the Omarchy Hyprland desktop from a FreeBSD TTY.
+# omg — launch the Omarchy Hyprland desktop from a FreeBSD TTY.
 #
 # The x11-wm/hyprland port already ships its own `start-hyprland`; this wrapper
 # layers the Omarchy/FreeBSD-specific environment on top of it.
 #
-# Usage: log in on a virtual terminal and run `omarchy-session`.
+# Usage: log in on a virtual terminal and run `omg`.
 
 # Seat access (FreeBSD uses seatd instead of systemd-logind).
 export LIBSEAT_BACKEND=seatd

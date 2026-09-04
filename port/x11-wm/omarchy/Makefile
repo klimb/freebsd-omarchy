@@ -11,7 +11,7 @@ LICENSE=	MIT
 LICENSE_FILE=	${WRKSRC}/LICENSE
 
 # This is NOT a metaport: USES=metaport forces NO_INSTALL, but we ship the
-# omarchy-session launcher and omarchy-setup helper. So pull the deps via
+# omg launcher and omarchy-setup helper. So pull the deps via
 # RUN_DEPENDS and install our own files with a custom do-install.
 USE_GITHUB=	yes
 GH_ACCOUNT=	klimb
@@ -20,7 +20,7 @@ GH_PROJECT=	freebsd-omarchy
 NO_BUILD=	yes
 NO_ARCH=	yes
 USES=		shebangfix
-SHEBANG_FILES=	scripts/omarchy-session scripts/omarchy-setup
+SHEBANG_FILES=	scripts/omg scripts/omarchy-setup
 
 # Core desktop: compositor, seat/audio backend, terminal, portals, wl utils.
 # bash is required: every omarchy-* helper is a #!/bin/bash script. socat and
@@ -100,8 +100,8 @@ IMV_RUN_DEPENDS=	imv:graphics/imv
 CHROMIUM_RUN_DEPENDS=	chrome:www/chromium
 
 do-install:
-	${INSTALL_SCRIPT} ${WRKSRC}/scripts/omarchy-session \
-		${STAGEDIR}${PREFIX}/bin/omarchy-session
+	${INSTALL_SCRIPT} ${WRKSRC}/scripts/omg \
+		${STAGEDIR}${PREFIX}/bin/omg
 	${INSTALL_SCRIPT} ${WRKSRC}/scripts/omarchy-setup \
 		${STAGEDIR}${PREFIX}/bin/omarchy-setup
 

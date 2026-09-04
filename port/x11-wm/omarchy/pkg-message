@@ -17,7 +17,7 @@ Omarchy for FreeBSD is installed. To finish setting up your desktop:
        omarchy-setup
 
   4. Log in on a TTY and start the desktop:
-       omarchy-session
+       omg
 
 PipeWire and WirePlumber run as user services and are started from Hyprland's
 autostart; they are not rc.d services.
