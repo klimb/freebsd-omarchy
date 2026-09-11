@@ -25,10 +25,9 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$DIR")"
 PORT_DIR=/usr/ports/x11-wm/omarchy
 
-if [ "$(id -u)" -ne 0 ] && ! command -v doas >/dev/null 2>&1; then
-	echo "error: need root or doas to install packages" >&2
-	exit 1
-fi
+# doas may not exist yet on a fresh box; prepare-system.sh below installs and
+# configures it via a one-time `su` bootstrap. priv() is only ever called
+# after that step returns, so it will always find doas here.
 priv() {
 	if [ "$(id -u)" -eq 0 ]; then "$@"
 	else doas "$@"; fi
@@ -79,24 +78,34 @@ priv mkdir -p "$DISTDIR"
 priv cp "$TMP.tar.gz" "$DISTDIR/$DISTFILES"
 rm -rf "$TMP" "$TMP.tar.gz"
 
-# 4. Build + install: pulls every RUN_DEPENDS package and runs do-install
-# (every script in scripts/ + overrides/bin/). BATCH=yes accepts
-# OPTIONS_DEFAULT without a dialog. `reinstall` (not `install`) so re-running
-# this script after local edits works -- plain `install` refuses outright
-# once omarchy is already registered. USE_PACKAGE_DEPENDS_ONLY=yes forces
-# every RUN_DEPENDS to be satisfied from the binary pkg repo (fast, no
-# source builds); without it, `make install` will descend into a dep's port
-# and compile it from source whenever the package isn't already installed.
-log "Building and installing the port"
-priv env BATCH=yes NO_CHECKSUM=yes USE_PACKAGE_DEPENDS_ONLY=yes \
-	make -C "$PORT_DIR" reinstall clean
+# 4. Pre-install every RUN_DEPENDS from the binary pkg repo. FreeBSD's ports
+# tree defaults to building missing deps from source; USE_PACKAGE_DEPENDS_ONLY
+# only looks for pre-built local .pkg files in /usr/ports/packages/. Neither
+# does what we want (grab prebuilt binaries from pkg.FreeBSD.org). So parse
+# the origins straight out of the Makefile and hand them to `pkg install -y`,
+# which accepts cat/port form. Each RUN_DEPENDS entry is `<target>:<origin>`.
+log "Installing RUN_DEPENDS from binary pkg repo"
+DEPS=$(make -C "$PORT_DIR" -V RUN_DEPENDS -V BUILD_DEPENDS -V LIB_DEPENDS \
+	| tr ' ' '\n' \
+	| awk -F: 'NF>=2 && $2 ~ /^[a-z0-9_-]+\/[a-z0-9._-]+$/ {print $2}' \
+	| sort -u)
+# shellcheck disable=SC2086
+priv pkg install -y $DEPS
 
-# 5. Dotfiles: clone Omarchy and apply the FreeBSD adaptations. Installed to
+# 5. Build + install our port: no deps to fetch anymore, so this is just
+# extract + do-install (every script in scripts/ + overrides/bin/).
+# BATCH=yes accepts OPTIONS_DEFAULT without a dialog. `reinstall` (not
+# `install`) so re-running this script after local edits works -- plain
+# `install` refuses outright once omarchy is already registered.
+log "Building and installing the port"
+priv env BATCH=yes NO_CHECKSUM=yes make -C "$PORT_DIR" reinstall clean
+
+# 6. Dotfiles: clone Omarchy and apply the FreeBSD adaptations. Installed to
 # PATH by the port's do-install above.
 log "Running omarchy-setup"
 OMARCHY_BRANCH="$OMARCHY_BRANCH" omarchy-setup
 
-# 6. Make bash the login shell so the terminal loads Omarchy's bash config
+# 7. Make bash the login shell so the terminal loads Omarchy's bash config
 # (aliases like `ls` -> eza --icons, the prompt, etc.); FreeBSD's default
 # /bin/sh never does. Only possible now that bash (a RUN_DEPENDS) is
 # actually installed.

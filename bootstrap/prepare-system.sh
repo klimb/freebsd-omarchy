@@ -5,22 +5,53 @@
 # module, change a user's group or login shell, or write doas.conf). Run this
 # once, then install the omarchy port (bootstrap/install.sh does both).
 #
-# Run as root, or as a regular user with doas already installed and configured.
+# Run as root, or as a regular wheel user. Vanilla FreeBSD has no doas
+# installed; when run as a non-root wheel user without doas, this script
+# bootstraps doas via `su` (prompts once for the root password), then uses
+# doas for every subsequent privileged step.
 #
 # Environment overrides: none.
 
 set -eu
 
+USER_NAME="$(id -un)"
+
+log() { printf '==> %s\n' "$*"; }
+
+# Bootstrap doas on a fresh box. Vanilla FreeBSD ships neither doas nor sudo,
+# and doas has no PAM policy of its own -- without pam.d/doas every auth hits
+# PAM's default-deny "other" rule and fails. Do the minimum here (install
+# binary, write PAM policy, drop a permit-persist rule for USER_NAME) via a
+# single su -- root sh; the full doas config (nopass shutdown/acpiconf, ownership
+# fixups) still runs later in step 4 below. Requires USER_NAME to be in wheel
+# (FreeBSD's PAM restricts `su` to wheel members).
 if [ "$(id -u)" -ne 0 ] && ! command -v doas >/dev/null 2>&1; then
-	echo "error: need root or doas to prepare the system" >&2
+	log "No doas found; bootstrapping via su (enter root password when prompted)"
+	su - root <<EOSU
+set -eu
+pkg install -y doas
+mkdir -p /usr/local/etc/pam.d
+if [ ! -f /usr/local/etc/pam.d/doas ]; then
+	printf 'auth\t\tinclude\t\tsystem\naccount\t\tinclude\t\tsystem\nsession\t\tinclude\t\tsystem\npassword\tinclude\t\tsystem\n' > /usr/local/etc/pam.d/doas
+	chown root:wheel /usr/local/etc/pam.d/doas
+	chmod 0644 /usr/local/etc/pam.d/doas
+fi
+if ! grep -qF 'permit persist $USER_NAME as root' /usr/local/etc/doas.conf 2>/dev/null; then
+	printf 'permit persist %s as root\n' '$USER_NAME' >> /usr/local/etc/doas.conf
+	chown root:wheel /usr/local/etc/doas.conf
+	chmod 0644 /usr/local/etc/doas.conf
+fi
+EOSU
+fi
+
+if [ "$(id -u)" -ne 0 ] && ! command -v doas >/dev/null 2>&1; then
+	echo "error: doas bootstrap failed; is $USER_NAME in the wheel group?" >&2
 	exit 1
 fi
 priv() {
 	if [ "$(id -u)" -eq 0 ]; then "$@"
 	else doas "$@"; fi
 }
-
-USER_NAME="$(id -un)"
 
 log() { printf '==> %s\n' "$*"; }
 
