@@ -104,15 +104,58 @@ not BlueZ. Affected: `omarchy-bluetooth-device`, `omarchy-bluetooth-power`,
 - **done** Brightness key bindings. On some laptops (e.g. ThinkPads) the
   brightness Fn keys emit `KEY_F5`/`KEY_F6` (xkb `F5`/`F6`), not
   `XF86MonBrightness*`, so Omarchy's default binds never fire (verified with
-  `libinput debug-events`). Opt in with `OMARCHY_BRIGHTNESS_FN_KEYS=1`:
-  `omarchy-setup` then binds `F5`→down / `F6`→up in `~/.config/hypr/bindings.lua`
-  (a user-override file that survives clone updates). Off by default so hardware
-  with proper `XF86` keysyms isn't hijacked. Verified live: keys change the panel
-  and show the brightness OSD.
+  `libinput debug-events`). `omarchy-setup` binds `F5`→down / `F6`→up in
+  `~/.config/hypr/bindings.lua` (a user-override file that survives clone
+  updates) by default; opt out with `OMARCHY_BRIGHTNESS_FN_KEYS=0` on hardware
+  whose keys emit proper `XF86` keysyms and where you want F5/F6 free for
+  other uses. Verified live: keys change the panel and show the brightness OSD.
 - **todo** Keyboard backlight (`XF86KbdBrightness*`) — upstream reads
   `/sys/class/leds/*kbd_backlight*`, absent on FreeBSD; the helper degrades to a
   no-op ("no keyboard backlight device"). Same for the `micmute` LED.
 - **todo** `acpi` (6) → `acpiconf`/`sysctl` for battery + thermal.
+
+### External displays over USB-C DP Alt Mode — **hardware quirk, no software fix**
+Test hardware: **Samsung Odyssey G93SC** (49" curved, native **5120x1440 32:9
+@ 240 Hz**), reached via a **Cable Matters** USB-C→DisplayPort adapter (Realtek
+"billboard" chip, appears in `dmesg` as `ugen1.5: <Cable Matters Inc. billboard>
+at usbus1`). Laptop is Intel Alder Lake with i915kms.
+
+Symptom: plugging the adapter into a running Hyprland session does *not* bring
+up the external monitor. `hyprctl monitors` keeps reporting only `eDP-1`, even
+when the kernel's USB stack sees the billboard device connect and disconnect
+repeatedly.
+
+Root cause: FreeBSD's i915kms does **not** propagate DP-Alt-Mode hotplug events
+from the USB-C billboard chip into the DRM connector-status uevent path. The
+`Aquamarine` DRM backend inside Hyprland only ever gets the connector
+enumerated at *startup* (see `Connector gets name DP-1` in `hyprland.log`);
+after that, mid-session cable plug/unplug produces zero further events at the
+Hyprland level even though `dmesg` shows the USB billboard connect/disconnect
+cycles. Linux fixes this via `/sys/class/drm/card0-DP-1/status` (write-to-probe)
+which FreeBSD's DRM KPI does not expose, so there is no userspace way to force
+a re-scan.
+
+Only reliable workaround: **cold boot with the DP cable already connected**.
+i915kms's startup-time DP probe reads EDID and reports the connector as
+connected consistently; from there the catch-all
+`hl.monitor({output="", mode="preferred", position="auto", scale=...})`
+default rule in `~/.config/hypr/monitors.lua` places it. Verified live on this
+hardware: reboot with the USB-C cable in → monitor comes up at boot with the
+correct mode; unplug + replug mid-session → dead until next reboot.
+
+Fallback options for users hitting this:
+- Try a **different USB-C port** — some ports are USB-only, only TB4/USB4 ports
+  actually route DP lanes. (Live-tested here: swapping ports made no difference,
+  both ports probe on cold boot only.)
+- Try a **different USB-C→DP cable** — many "USB-C" cables are USB 2 data only
+  and never negotiate DP Alt Mode at all.
+- If the laptop has a **native HDMI** output, use it: no USB-C mux involved.
+- **Native DisplayPort** (i.e. a real DP jack on the laptop, not USB-C→DP)
+  should hotplug reliably; this quirk is specific to the USB-C Alt-Mode path.
+
+Not planned to fix in software: this needs kernel work in FreeBSD's i915kms
+(specifically the port/type-c/dp-alt bring-up code and the hpd notification
+path into the DRM subsystem). Track: <https://github.com/freebsd/drm-kmod>.
 
 ### Audio / volume keys — **done**
 PipeWire runs but exposes no output sink on FreeBSD, so `pactl`/`wpctl` (the

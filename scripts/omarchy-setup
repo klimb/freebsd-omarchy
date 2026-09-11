@@ -602,21 +602,21 @@ hl.env("XCURSOR_THEME", "$CURSOR_THEME")
 LUA
 fi
 
-# Some FreeBSD laptops (e.g. ThinkPads) report the brightness Fn keys as plain
-# F5/F6 (KEY_F5/KEY_F6) rather than XF86MonBrightness*, so Omarchy's default
-# brightness binds never fire. Opt in with OMARCHY_BRIGHTNESS_FN_KEYS=1 to bind
-# F5 (down) and F6 (up) to omarchy-brightness-display. Off by default: on
-# hardware whose keys emit the proper XF86 keysyms this would needlessly hijack
-# F5/F6. The choice is persisted to a state file (like the editor/theme
-# defaults below) so it survives future re-runs: bindings.lua itself does NOT
-# survive re-runs -- the config-copy step above replaces it with a fresh
-# upstream copy every time, opt-in flag or not, so re-appending only on this
-# run's flag would silently lose the binding the next time omarchy-setup runs
-# for something unrelated.
+# Bind F5/F6 to brightness on FreeBSD laptops. Most FreeBSD hardware paths
+# don't wire up acpi_video (linuxkpi_video is loaded instead), so the Fn+F5/F6
+# keys emit plain KEY_F5/KEY_F6 -- not XF86MonBrightness* -- and Omarchy's
+# default brightness binds never fire. Default ON: the alternative was an
+# opt-in via OMARCHY_BRIGHTNESS_FN_KEYS=1 which just made every fresh install
+# feel broken (brightness keys dead until the user knew about a flag we
+# haven't documented anywhere prominent). Opt out with OMARCHY_BRIGHTNESS_FN_KEYS=0
+# if you're on hardware whose keys emit proper XF86 keysyms and you want F5/F6
+# free for other uses.
 BRIGHTNESS_FN_STATE="$HOME/.local/state/omarchy/brightness-fn-keys"
-if [ "${OMARCHY_BRIGHTNESS_FN_KEYS:-0}" = 1 ]; then
+if [ "${OMARCHY_BRIGHTNESS_FN_KEYS:-1}" = 1 ]; then
 	mkdir -p "$(dirname "$BRIGHTNESS_FN_STATE")"
 	: > "$BRIGHTNESS_FN_STATE"
+else
+	rm -f "$BRIGHTNESS_FN_STATE"
 fi
 if [ -f "$BRIGHTNESS_FN_STATE" ] &&
 	! grep -q 'FreeBSD brightness Fn keys' "$CONFIG_HOME/hypr/bindings.lua" 2>/dev/null; then
@@ -701,6 +701,20 @@ grep -rIl --exclude-dir=.git '^#!/bin/bash' "$OMARCHY_SRC" 2>/dev/null |
 			cat "$tmp" > "$file"    # truncate-in-place keeps the exec bit
 		rm -f "$tmp"
 	done
+
+# 3ba. Neuter the upstream first-run Wi-Fi popup. install/user/first-run/wifi.sh
+# probes NetworkManager via `nm-online` before deciding whether to prompt the
+# user to configure Wi-Fi. FreeBSD has no NetworkManager -> nm-online returns
+# non-zero every time -> "Setup Wi-Fi" notification fires on every session
+# start, even though our own install path REQUIRES a working network before
+# it runs. Overwrite with a no-op so the notification never triggers. Runs
+# after git reset (above) so it survives clone updates.
+WIFI_FR="$OMARCHY_SRC/install/user/first-run/wifi.sh"
+if [ -f "$WIFI_FR" ]; then
+	log "Neutering upstream first-run Wi-Fi popup (no NetworkManager on FreeBSD)"
+	printf '#!/bin/sh\n# no-op on FreeBSD: no NetworkManager, nm-online never resolves.\nexit 0\n' > "$WIFI_FR"
+	chmod +x "$WIFI_FR"
+fi
 
 # 3c. Screensaver/lock detect the effect process with `pgrep/pkill -x ttfx` and
 # with `pidwait`, none of which fit FreeBSD: our ttfx shim runs TTE's `tte`

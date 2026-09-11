@@ -122,3 +122,47 @@ it's a genuine upgrade in several ways:
 
 See [ROADMAP.md](ROADMAP.md) for the full, area-by-area porting status and
 [docs/design.md](docs/design.md) for the underlying design rationale.
+
+## Known hardware quirk: external displays over USB-C DP Alt Mode
+
+If you drive an external monitor from a USB-C port (i.e. through a USB-C→
+DisplayPort dongle rather than a native DP jack on the laptop), plug the
+cable in **before** you boot — mid-session hotplug is unreliable on this
+platform.
+
+Test hardware: **Samsung Odyssey G93SC** (49″ curved, native
+**5120x1440 32:9 @ 240 Hz**) via a **Cable Matters** USB-C→DP adapter
+(Realtek "billboard" chip, shows up in `dmesg` as
+`ugen*: <Cable Matters Inc. billboard> at usbus*`) on an Intel Alder Lake
+laptop with i915kms.
+
+Symptom: `hyprctl monitors` only ever reports the internal panel; the
+kernel's USB stack sees the billboard device connect/disconnect but
+Hyprland/Aquamarine never sees a `DP-1 connected` hotplug event and never
+brings the external output up.
+
+Root cause is upstream: FreeBSD's `i915kms` doesn't propagate DP-Alt-Mode
+HPD from the USB-C billboard chip into the DRM connector-status uevent
+path. Aquamarine only enumerates connectors at Hyprland startup, so the
+external monitor is only detected when it's already plugged in at boot
+time. Linux's `/sys/class/drm/card0-DP-*/status` write-to-probe fallback
+is not exposed by FreeBSD's DRM KPI, so there is no userspace way to
+force a re-scan.
+
+**Reliable workaround**: reboot with the USB-C cable connected — the
+cold-boot i915 probe reads the EDID and reports the connector as
+`connected`, and the default catch-all `hl.monitor({output="",
+mode="preferred", position="auto", scale=…})` rule in
+`~/.config/hypr/monitors.lua` places it automatically. Live-verified on
+the hardware above.
+
+If cold-boot detection also fails, fall back to (in order): a different
+USB-C port (only the TB4/USB4 ones actually route DP lanes), a different
+cable (many "USB-C" cables are USB 2 data only), the laptop's native HDMI
+output if it has one, or a native DisplayPort jack if it has one — the
+quirk is specific to the USB-C Alt-Mode path.
+
+Longer-term this needs kernel work in
+[`freebsd/drm-kmod`](https://github.com/freebsd/drm-kmod) — Type-C /
+DP-Alt-Mode / HPD notification into the DRM subsystem. Tracked in
+[ROADMAP.md](ROADMAP.md) under *Display / power keys*.

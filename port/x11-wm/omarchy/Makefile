@@ -74,7 +74,10 @@ RUN_DEPENDS+=	starship:shells/starship \
 
 # Media + desktop utilities present in omarchy-base.packages, confirmed in ports.
 # wf-recorder (wlr-screencopy) + ffmpeg back the video-only screen recording
-# override that replaces the Linux-only gpu-screen-recorder.
+# override that replaces the Linux-only gpu-screen-recorder. tte (from
+# py-terminaltexteffects) is the actual "ttfx" engine our shim wraps; without
+# it every screensaver trigger just prints "TTE engine not installed" until
+# the idle timer sends the machine to lock.
 RUN_DEPENDS+=	convert:graphics/ImageMagick7 \
 		mpv:multimedia/mpv \
 		wf-recorder:multimedia/wf-recorder \
@@ -85,7 +88,9 @@ RUN_DEPENDS+=	convert:graphics/ImageMagick7 \
 		unzip:archivers/unzip \
 		qrencode:graphics/libqrencode \
 		gnome-keyring-daemon:security/gnome-keyring \
-		bash-completion>0:shells/bash-completion
+		bash-completion>0:shells/bash-completion \
+		py312-terminaltexteffects>0:devel/py-terminaltexteffects@py312 \
+		cmatrix:games/cmatrix
 
 # Fonts for the Omarchy look.
 RUN_DEPENDS+=	nerd-fonts>0:x11-fonts/nerd-fonts \
