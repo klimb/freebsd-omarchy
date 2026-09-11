@@ -83,9 +83,13 @@ rm -rf "$TMP" "$TMP.tar.gz"
 # (every script in scripts/ + overrides/bin/). BATCH=yes accepts
 # OPTIONS_DEFAULT without a dialog. `reinstall` (not `install`) so re-running
 # this script after local edits works -- plain `install` refuses outright
-# once omarchy is already registered.
+# once omarchy is already registered. USE_PACKAGE_DEPENDS_ONLY=yes forces
+# every RUN_DEPENDS to be satisfied from the binary pkg repo (fast, no
+# source builds); without it, `make install` will descend into a dep's port
+# and compile it from source whenever the package isn't already installed.
 log "Building and installing the port"
-priv env BATCH=yes NO_CHECKSUM=yes make -C "$PORT_DIR" reinstall clean
+priv env BATCH=yes NO_CHECKSUM=yes USE_PACKAGE_DEPENDS_ONLY=yes \
+	make -C "$PORT_DIR" reinstall clean
 
 # 5. Dotfiles: clone Omarchy and apply the FreeBSD adaptations. Installed to
 # PATH by the port's do-install above.

@@ -100,6 +100,7 @@ if [ "$USER_NAME" != "root" ]; then
 	# password stack so it authenticates against the user's own password.
 	DOAS_PAM=/usr/local/etc/pam.d/doas
 	if [ ! -f "$DOAS_PAM" ]; then
+		priv mkdir -p "$(dirname "$DOAS_PAM")"
 		printf 'auth\t\tinclude\t\tsystem\naccount\t\tinclude\t\tsystem\nsession\t\tinclude\t\tsystem\npassword\tinclude\t\tsystem\n' |
 			priv tee "$DOAS_PAM" >/dev/null
 		priv chown root:wheel "$DOAS_PAM"

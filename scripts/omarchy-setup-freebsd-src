@@ -34,9 +34,9 @@ if [ -d "$SRC_DIR" ] && [ -n "$(ls -A "$SRC_DIR" 2>/dev/null)" ]; then
 	exit 1
 fi
 
-step "Cloning $SRC_REPO ($SRC_BRANCH) into $SRC_DIR"
+step "Cloning $SRC_REPO ($SRC_BRANCH) into $SRC_DIR (shallow, --depth 1)"
 mkdir -p "$SRC_DIR"
-git clone --branch "$SRC_BRANCH" "$SRC_REPO" "$SRC_DIR" || {
+git clone --progress --depth 1 --branch "$SRC_BRANCH" "$SRC_REPO" "$SRC_DIR" || {
 	echo "!! git clone failed" >&2
 	exit 1
 }

@@ -34,9 +34,9 @@ if [ -d "$PORTS_DIR" ] && [ -n "$(ls -A "$PORTS_DIR" 2>/dev/null)" ]; then
 	exit 1
 fi
 
-step "Cloning $PORTS_REPO ($PORTS_BRANCH) into $PORTS_DIR"
+step "Cloning $PORTS_REPO ($PORTS_BRANCH) into $PORTS_DIR (shallow, --depth 1)"
 mkdir -p "$PORTS_DIR"
-git clone --branch "$PORTS_BRANCH" "$PORTS_REPO" "$PORTS_DIR" || {
+git clone --progress --depth 1 --branch "$PORTS_BRANCH" "$PORTS_REPO" "$PORTS_DIR" || {
 	echo "!! git clone failed" >&2
 	exit 1
 }
