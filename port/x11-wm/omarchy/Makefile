@@ -89,6 +89,7 @@ RUN_DEPENDS+=	convert:graphics/ImageMagick7 \
 		qrencode:graphics/libqrencode \
 		gnome-keyring-daemon:security/gnome-keyring \
 		bash-completion>0:shells/bash-completion \
+		figlet:misc/figlet \
 		py312-terminaltexteffects>0:devel/py-terminaltexteffects@py312 \
 		cmatrix:games/cmatrix
 
