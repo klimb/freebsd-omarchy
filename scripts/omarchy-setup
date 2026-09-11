@@ -1218,7 +1218,10 @@ for f in "$HOME/.bashrc" "$HOME/.bash_profile"; do
 	[ -e "$f" ] && [ ! -e "$f.bak-$STAMP" ] && mv "$f" "$f.bak-$STAMP"
 done
 cat > "$HOME/.bashrc" <<'BASHRC'
-# Omarchy on FreeBSD: set OMARCHY_PATH/PATH, then load Omarchy's bash config.
+# Omarchy on FreeBSD: set OMARCHY_PATH/PATH, then load Omarchy's bash config
+# only inside a Wayland session (Hyprland terminals). On a bare TTY or over
+# SSH, WAYLAND_DISPLAY is unset -> stay a plain bash so no eza/starship/etc.
+# aliases surprise scripts, sudo, or non-graphical tooling.
 export OMARCHY_PATH="$HOME/.local/src/omarchy"
 case ":$PATH:" in
 	*":$OMARCHY_PATH/bin:"*) ;;
@@ -1229,7 +1232,9 @@ case ":$PATH:" in
 	*":/usr/local/bin:"*) ;;
 	*) export PATH="$PATH:/usr/local/sbin:/usr/local/bin" ;;
 esac
-[ -r "$OMARCHY_PATH/default/bashrc" ] && . "$OMARCHY_PATH/default/bashrc"
+if [ -n "$WAYLAND_DISPLAY" ] && [ -r "$OMARCHY_PATH/default/bashrc" ]; then
+	. "$OMARCHY_PATH/default/bashrc"
+fi
 BASHRC
 cat > "$HOME/.bash_profile" <<'BASHPROFILE'
 [ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"

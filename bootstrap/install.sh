@@ -81,16 +81,92 @@ rm -rf "$TMP" "$TMP.tar.gz"
 # 4. Pre-install every RUN_DEPENDS from the binary pkg repo. FreeBSD's ports
 # tree defaults to building missing deps from source; USE_PACKAGE_DEPENDS_ONLY
 # only looks for pre-built local .pkg files in /usr/ports/packages/. Neither
-# does what we want (grab prebuilt binaries from pkg.FreeBSD.org). So parse
-# the origins straight out of the Makefile and hand them to `pkg install -y`,
-# which accepts cat/port form. Each RUN_DEPENDS entry is `<target>:<origin>`.
+# does what we want (grab prebuilt binaries from pkg.FreeBSD.org).
+#
+# CRITICAL: install by pkg NAME not by origin. Some FreeBSD ports produce
+# multiple package flavors from a single origin (e.g. multimedia/ffmpeg
+# produces BOTH `ffmpeg` (with X11) and `ffmpeg-nox11`, both conflicting on
+# /usr/local/bin/ffmpeg). Passing `pkg install multimedia/ffmpeg` lets pkg
+# pick either flavor -- if it picks nox11 but another dep needs the x11 one,
+# pkg's SAT solver drops both AND every transitive dependent (hyprland,
+# quickshell, nautilus, mpv, ...) silently. `make install` then descends
+# into each dropped port and starts a source build -- exactly what we don't
+# want. Passing pkg NAMES lets the solver resolve flavors correctly.
+#
+# Extract the pkg name from each RUN_DEPENDS entry `<check>:<origin>`.
+# In FreeBSD ports RUN_DEPENDS syntax, <check> is a binary/path check UNLESS
+# it embeds a version constraint (`pkg>0`, `pkg>=1.2`, etc.), in which case
+# the substring before the operator IS the real pkg name. For a binary check
+# the LHS is often NOT the pkg name (e.g. `rg:textproc/ripgrep`,
+# `nvim:editors/neovim`, `wl-copy:x11/wl-clipboard`), so fall back to the
+# origin's basename -- matches the actual pkg name for the vast majority of
+# ports and is unambiguous for pkg's SAT solver.
 log "Installing RUN_DEPENDS from binary pkg repo"
 DEPS=$(make -C "$PORT_DIR" -V RUN_DEPENDS -V BUILD_DEPENDS -V LIB_DEPENDS \
 	| tr ' ' '\n' \
-	| awk -F: 'NF>=2 && $2 ~ /^[a-z0-9_-]+\/[a-z0-9._-]+$/ {print $2}' \
+	| awk -F: '
+		NF>=2 && $2 ~ /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9._@-]+$/ {
+			if ($1 ~ /[<>=]/) {
+				split($1, a, /[<>=]/)
+				print a[1]
+			} else {
+				# strip @flavor before taking origin basename
+				sub(/@.*$/, "", $2)
+				n = split($2, b, "/")
+				print b[n]
+			}
+		}' \
 	| sort -u)
 # shellcheck disable=SC2086
 priv pkg install -y $DEPS
+
+# pkg install's SAT solver silently DROPS packages when it hits a conflict
+# (e.g. ffmpeg vs ffmpeg-nox11, git vs git-lite vs git-tiny -- all flavors
+# of the same origin, mutually exclusive on /usr/local/bin/*). Whatever it
+# drops then falls out of the "installed" set entirely. If we let `make
+# install` on our port proceed at that point, it will descend into the
+# dropped port's dir and BUILD IT FROM SOURCE -- a hard no. Verify every
+# expected pkg name is now present; retry any drops one-by-one (individual
+# pkg install has less to solve for and picks the right variant); fail
+# hard if any are still missing so the user sees the real problem instead
+# of hours of cc(1).
+verify_installed() {
+	MISSING=""
+	for name in $DEPS; do
+		pkg info -e "$name" >/dev/null 2>&1 || MISSING="$MISSING $name"
+	done
+}
+verify_installed
+if [ -n "$MISSING" ]; then
+	log "pkg dropped some deps silently; retrying individually:$MISSING"
+	for name in $MISSING; do
+		priv pkg install -y "$name" || true
+	done
+	verify_installed
+fi
+if [ -n "$MISSING" ]; then
+	echo "error: these packages could not be installed from the binary" >&2
+	echo "repo (would trigger a source build; aborting):" >&2
+	printf '  %s\n' $MISSING >&2
+	exit 1
+fi
+
+# Some pkg post-install scripts (fontconfig, gsettings-desktop-schemas,
+# gdk-pixbuf, ...) touch $HOME/.cache while running as root. On a stock
+# fresh box with our own doas.conf that is harmless (doas resets $HOME to
+# root's), but if the invoking user's doas rule uses `keepenv` those scripts
+# see $HOME=/home/$USER and end up creating $HOME/.cache with root:$USER
+# ownership -- which then breaks starship, emacs, chromium, etc. at first
+# login with "cannot create cache dir: permission denied". Reclaim ownership
+# of the common user cache/config roots defensively.
+if [ "$USER_NAME" != "root" ]; then
+	for d in .cache .local .config; do
+		if [ -e "$HOME/$d" ] && [ "$(stat -f %Su "$HOME/$d")" != "$USER_NAME" ]; then
+			log "Fixing ownership of $HOME/$d (created as root by pkg post-install)"
+			priv chown -R "$USER_NAME:$USER_NAME" "$HOME/$d"
+		fi
+	done
+fi
 
 # 5. Build + install our port: no deps to fetch anymore, so this is just
 # extract + do-install (every script in scripts/ + overrides/bin/).
